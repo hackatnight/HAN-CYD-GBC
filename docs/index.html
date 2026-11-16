@@ -12,6 +12,7 @@
     --bronze: #9a8462; --text: #e4ecf2; --dim: #8494a5; --warn: #e0a8a0;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
   header { background: linear-gradient(#6a7e92, #263444); border-top: 1px solid #c8d6e2; border-bottom: 3px solid var(--bronze); padding: 18px 24px; }
   header h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
@@ -35,12 +36,32 @@
   code { background: var(--panel); padding: 1px 6px; border-radius: 4px; }
   a { color: var(--accent); }
   footer { color: var(--dim); text-align: center; padding: 24px; font-size: 14px; }
+  .send { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 18px 20px; margin: 28px 0; }
+  .send h2 { margin: 0 0 4px; font-size: 22px; }
+  .send .sub { color: var(--dim); margin: 0 0 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 10px 0; }
+  .row label { color: var(--dim); }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--hilite); border-radius: 6px; padding: 6px 8px; font: inherit; max-width: 100%; }
+  #status { color: var(--accent); }
+  #status.err { color: var(--warn); }
+  #drop { border: 2px dashed var(--hilite); border-radius: 12px; padding: 26px 16px; text-align: center; color: var(--dim); margin: 12px 0; cursor: pointer; }
+  #drop.over { border-color: var(--accent); background: #16202c; color: var(--text); }
+  #drop.off { opacity: .45; pointer-events: none; }
+  #queue { list-style: none; padding: 0; margin: 8px 0 0; }
+  #queue li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--hilite); }
+  #queue .to { color: var(--dim); font-size: 13px; grid-column: 1; word-break: break-all; }
+  #queue .st { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--dim); font-size: 14px; white-space: nowrap; }
+  #queue .st.done { color: #8fd18f; } #queue .st.fail { color: var(--warn); }
+  #queue progress { grid-column: 1 / span 2; width: 100%; height: 6px; accent-color: var(--accent); }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 12px; max-width: 420px; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 </style>
 </head>
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the 2.4" ESP32-2432S024C. Version 2.7.2.</p>
+  <p>Game Boy, Game Boy Color and NES on the 2.4" ESP32-2432S024C. Version 2.8.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -80,6 +101,40 @@
     </div>
   </div>
 
+  <section class="send" id="send">
+    <h2>Send games over USB</h2>
+    <p class="sub">Copy games to the board's SD card without taking the card out. Each game goes into
+      <code>/Roms/GB</code>, <code>/Roms/GBC</code> or <code>/Roms/NES</code> by its file type, and nothing
+      already on the card is erased. Needs firmware 2.8.0 or newer.</p>
+    <ol>
+      <li>Plug the board in. Leave it on the game list (or open <em>Setup → Transfer games (USB)</em>).</li>
+      <li>Close anything else using the board's port (Arduino serial monitor, another tab).</li>
+      <li>Click <strong>Connect</strong> and pick the board's port.</li>
+      <li>Drop games below. About 13 seconds per MB.</li>
+    </ol>
+    <div class="row">
+      <button class="btn" id="connect">Connect</button>
+      <button class="btn" id="disconnect" hidden>Done</button>
+      <span id="status">Not connected.</span>
+    </div>
+    <div class="row" id="opts" hidden>
+      <label>Save games to <select id="dest"><option value="auto">Automatic (by file type)</option></select></label>
+      <label>Cheat files (.cht) are for <select id="chtsys"><option value="gb">Game Boy</option><option value="gbc">Game Boy Color</option><option value="nes">NES</option></select></label>
+    </div>
+    <div id="drop" class="off">Drop .gb, .gbc, .nes or .cht files here, or click to choose them<input type="file" id="pick" multiple hidden></div>
+    <ul id="queue"></ul>
+  </section>
+
+  <dialog id="clash">
+    <p><strong id="clashName"></strong> is already on the card.</p>
+    <label><input type="checkbox" id="clashAll"> Do the same for the rest</label>
+    <div class="btns">
+      <button class="btn" value="replace">Replace it</button>
+      <button class="btn" value="both">Keep both</button>
+      <button class="btn" value="skip">Skip</button>
+    </div>
+  </dialog>
+
   <h3>How to flash</h3>
   <ol>
     <li>Use <strong>Chrome or Edge on a computer</strong> (Windows, Mac, Linux or ChromeOS). Phones and Firefox/Safari can't flash.</li>
@@ -103,6 +158,130 @@
   <p>Download a <code>.bin</code> from the <a href="https://github.com/hackatnight/HAN-CYD-GBC/tree/main/docs/firmware">firmware folder</a> and run:</p>
   <p><code>esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-BT.bin</code></p>
 </main>
+<script type="module">
+import { BAUD, HnxLink, targetFor, numbered, romFolders } from './send.js';
+const $ = id => document.getElementById(id);
+let port = null, link = null, busy = false, clashRule = null;
+const status = (t, err = false) => { $('status').textContent = t; $('status').className = err ? 'err' : ''; };
+const connected = on => {
+  $('connect').hidden = on; $('disconnect').hidden = !on; $('opts').hidden = !on;
+  $('drop').classList.toggle('off', !on);
+};
+
+if (!('serial' in navigator)) {
+  $('connect').disabled = true;
+  status('This browser can\'t talk to USB devices. Use Chrome or Edge on a computer.', true);
+}
+
+$('connect').onclick = async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: BAUD, bufferSize: 16384 });
+    try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (e) {}
+    link = new HnxLink(port.readable, port.writable);
+    status('Connecting... (if the board restarts, this takes a few seconds)');
+    const info = await link.hello();
+    const folders = await romFolders(link);
+    const dest = $('dest');
+    dest.length = 1;
+    for (const f of folders) dest.add(new Option(f, f));
+    status(`Connected to H@N-CYD-GBC ${info.version} (${info.build === 'BT' ? 'Bluetooth' : 'touch-only'} build), ` +
+           `${info.freeMB.toLocaleString()} MB free on the card.`);
+    connected(true);
+  } catch (e) {
+    status(e.message || String(e), true);
+    await closePort();
+  }
+};
+
+async function closePort() {
+  if (link) { await link.release(); link = null; }
+  if (port) { try { await port.close(); } catch (e) {} port = null; }
+  connected(false);
+}
+
+$('disconnect').onclick = async () => {
+  if (busy) return;
+  if (link) await link.bye();
+  await closePort();
+  status('Done. The board is back on the game list with the new games in it.');
+};
+
+const drop = $('drop');
+drop.onclick = () => $('pick').click();
+$('pick').onchange = e => { send([...e.target.files]); e.target.value = ''; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); send([...e.dataTransfer.files]); };
+
+function askClash(path) {
+  if (clashRule) return Promise.resolve(clashRule);
+  const d = $('clash');
+  $('clashName').textContent = path;
+  $('clashAll').checked = false;
+  return new Promise(resolve => {
+    d.querySelectorAll('button').forEach(b => b.onclick = () => {
+      if ($('clashAll').checked) clashRule = b.value;
+      d.close();
+      resolve(b.value);
+    });
+    d.showModal();
+  });
+}
+
+async function send(files) {
+  if (!link || busy || !files.length) return;
+  busy = true; clashRule = null;
+  drop.classList.add('off');
+  const items = files.map(f => {
+    const li = document.createElement('li');
+    const to = targetFor(f.name, $('dest').value, $('chtsys').value);
+    li.innerHTML = '<span class="nm"></span><span class="to"></span><span class="st"></span><progress max="1" value="0"></progress>';
+    li.querySelector('.nm').textContent = f.name;
+    li.querySelector('.to').textContent = to ? 'to ' + to : 'not a .gb, .gbc, .nes or .cht file';
+    li.querySelector('.st').textContent = to ? 'waiting' : 'skipped';
+    $('queue').prepend(li);
+    return { f, to, li };
+  });
+  let sent = 0;
+  for (const it of items) {
+    if (!it.to) continue;
+    const st = it.li.querySelector('.st'), bar = it.li.querySelector('progress');
+    try {
+      let path = it.to;
+      if (await link.stat(path) !== null) {
+        const choice = await askClash(path);
+        if (choice === 'skip') { st.textContent = 'skipped'; continue; }
+        if (choice === 'both') {
+          let k = 2;
+          while (await link.stat(numbered(it.to, k)) !== null) k++;
+          path = numbered(it.to, k);
+          it.li.querySelector('.to').textContent = 'to ' + path;
+        }
+      }
+      const data = new Uint8Array(await it.f.arrayBuffer());
+      const t0 = performance.now();
+      st.textContent = 'sending';
+      await link.put(path, data, (done, total) => {
+        bar.value = total ? done / total : 1;
+        const kbs = done / 1024 / Math.max(0.001, (performance.now() - t0) / 1000);
+        st.textContent = `${Math.round(100 * done / total)}%  ${kbs.toFixed(0)} KB/s`;
+      });
+      bar.value = 1;
+      st.textContent = 'done'; st.className = 'st done';
+      sent++;
+    } catch (e) {
+      st.textContent = e.message; st.className = 'st fail';
+      if (link && link.closed) { status('The board was disconnected.', true); await closePort(); break; }
+    }
+  }
+  busy = false;
+  if (link) {
+    drop.classList.remove('off');
+    status(`${sent} file${sent === 1 ? '' : 's'} sent. Drop more, or click Done to finish.`);
+  }
+}
+</script>
 <footer>
   H@N-CYD-GBC by <a href="https://hackatnight.com">hackatnight.com</a> ·
   <a href="https://github.com/hackatnight/HAN-CYD-GBC">source on GitHub</a> ·

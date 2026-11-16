@@ -66,7 +66,8 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.7.2"
+#define APP_VERSION "2.8.0"
+#define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -2504,6 +2505,231 @@ static void controllerMenu() {
   }
 }
 
+// ----------------------------------------------------------------------------
+// USB transfer: the "Send games" page (hackatnight.com/HAN-CYD-GBC) sends games over the
+// board's USB serial port. Opened from Setup, or by itself when the page says hello while
+// the game list is showing. Text commands, one per line, all starting with "HNX ":
+//   HELLO                    -> OK <version> <BT|TOUCH> <free MB on the card>
+//   LIST <folder>            -> D <name> for each sub-folder, then END
+//   STAT <path>              -> YES <size> or NO
+//   MKDIR <folder>           -> OK or ERR <why>   (makes the parent folders too)
+//   PUT <path>\t<size>       -> GO <chunk>, then for each chunk the computer sends the bytes
+//                               and their CRC-32 (4 bytes, little-endian) and the board answers
+//                               A (written) or N (send it again). Last: DONE or ERR <why>.
+//   BYE                      -> BYE, back to the game list
+// A file is written as <path>.part and renamed when complete, so nothing on the card is
+// erased or left half-written; an existing file is only replaced if the page sent it under
+// that same name (the page asks you first).
+// ----------------------------------------------------------------------------
+#define XFER_CHUNK 4096
+static char xferBuf[320];
+static int xferLen = 0;
+static int xferReceived = 0;   // files received in the last transfer session
+
+// Collects serial input into lines. Returns a line (without "HNX ") once one is complete.
+static const char *xferPollLine() {
+  while (Serial.available()) {
+    int c = Serial.read();
+    if (c == '\n') {
+      xferBuf[xferLen] = 0;
+      if (xferLen && xferBuf[xferLen - 1] == '\r') xferBuf[--xferLen] = 0;
+      int n = xferLen;
+      xferLen = 0;
+      if (n > 4 && !strncmp(xferBuf, "HNX ", 4)) return xferBuf + 4;
+    } else if (xferLen < (int)sizeof xferBuf - 1) {
+      xferBuf[xferLen++] = (char)c;
+    } else {
+      xferLen = 0;   // too long: not ours
+    }
+  }
+  return nullptr;
+}
+
+static uint32_t xferCrc(const uint8_t *p, size_t n) {
+  uint32_t c = 0xFFFFFFFF;
+  while (n--) {
+    c ^= *p++;
+    for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1)));
+  }
+  return ~c;
+}
+
+static bool xferPathOk(const String &p) {
+  return p.startsWith("/") && p.indexOf("..") < 0 && p.length() < 250;
+}
+static bool xferMkdirs(const String &dir) {
+  for (int i = 1; i <= (int)dir.length(); i++)
+    if (i == (int)dir.length() || dir[i] == '/') {
+      String d = dir.substring(0, i);
+      if (!SD.exists(d) && !SD.mkdir(d)) return false;
+    }
+  return true;
+}
+
+static void xferScreen(const char *status, uint16_t color, const String &file, int pct) {
+  lcd.startWrite();
+  lcd.fillRect(0, 40, SCR_W, SCR_H - 40, C_BG);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextDatum(middle_center);
+  lcd.setTextColor(color, C_BG);
+  lcd.drawString(status, SCR_W / 2, 64);
+  lcd.setTextColor(C_DIM, C_BG);
+  lcd.drawString("On a computer, open in Chrome or Edge:", SCR_W / 2, 96);
+  lcd.setTextColor(C_ACCENT, C_BG);
+  lcd.drawString("hackatnight.com/HAN-CYD-GBC", SCR_W / 2, 116);
+  if (file.length()) {
+    String n = file.substring(file.lastIndexOf('/') + 1);
+    if (lcd.textWidth(n) > SCR_W - 16) {
+      while (n.length() > 4 && lcd.textWidth(n + "~") > SCR_W - 16) n.remove(n.length() - 1);
+      n += "~";
+    }
+    lcd.setTextColor(C_TEXT, C_BG);
+    lcd.drawString(n, SCR_W / 2, SCR_H - 78);
+  }
+  if (pct >= 0) {
+    int bw = min(240, SCR_W - 40), bx = (SCR_W - bw) / 2, y = SCR_H - 60;
+    lcd.drawRoundRect(bx, y, bw, 10, 4, C_DIM);
+    if (pct > 0) lcd.fillRoundRect(bx + 2, y + 2, (bw - 4) * pct / 100, 6, 3, C_ACCENT);
+  }
+  char b[48];
+  snprintf(b, sizeof b, xferReceived == 1 ? "1 file received" : "%d files received", xferReceived);
+  lcd.setTextColor(C_DIM, C_BG);
+  lcd.drawString(b, SCR_W / 2, SCR_H - 24);
+  lcd.setTextDatum(top_left);
+  lcd.endWrite();
+}
+
+static void xferPut(const char *args) {
+  const char *tab = strchr(args, '\t');
+  if (!tab) { Serial.print("HNX ERR bad PUT\n"); return; }
+  String path = String(args).substring(0, tab - args);
+  uint32_t size = strtoul(tab + 1, nullptr, 10);
+  if (!xferPathOk(path)) { Serial.print("HNX ERR bad path\n"); return; }
+  int sl = path.lastIndexOf('/');
+  if (sl > 0 && !xferMkdirs(path.substring(0, sl))) { Serial.print("HNX ERR can't make the folder\n"); return; }
+  String tmp = path + ".part";
+  if (SD.exists(tmp)) SD.remove(tmp);
+  File f = SD.open(tmp, FILE_WRITE);
+  uint8_t *buf = (uint8_t *)malloc(XFER_CHUNK + 4);
+  if (!f || !buf) { if (f) f.close(); free(buf); Serial.print("HNX ERR can't write to the SD card\n"); return; }
+  xferScreen("Receiving...", C_TEXT, path, 0);
+  Serial.printf("HNX GO %d\n", XFER_CHUNK);
+  uint32_t got = 0;
+  int lastPct = 0, tries = 0;
+  bool ok = true;
+  Serial.setTimeout(3000);
+  while (got < size) {
+    int n = (int)min((uint32_t)XFER_CHUNK, size - got);
+    size_t r = Serial.readBytes(buf, n + 4);
+    uint32_t want = buf[n] | (buf[n + 1] << 8) | (buf[n + 2] << 16) | ((uint32_t)buf[n + 3] << 24);
+    if (r == (size_t)n + 4 && xferCrc(buf, n) == want) {
+      if (f.write(buf, n) != (size_t)n) { ok = false; break; }
+      got += n;
+      tries = 0;
+      Serial.print("HNX A\n");
+      int pct = (int)((uint64_t)got * 100 / size);
+      if (pct - lastPct >= 4 || got == size) {   // redraw the bar now and then
+        lastPct = pct;
+        int bw = min(240, SCR_W - 40), bx = (SCR_W - bw) / 2;
+        lcd.fillRoundRect(bx + 2, SCR_H - 58, (bw - 4) * pct / 100, 6, 3, C_ACCENT);
+      }
+    } else {
+      // lost or damaged: drop whatever is still arriving, then ask for the chunk again
+      uint32_t t0 = millis();
+      while (millis() - t0 < 60) { while (Serial.available()) Serial.read(); delay(2); }
+      if (++tries > 5) { ok = false; break; }
+      Serial.print("HNX N\n");
+    }
+  }
+  f.close();
+  free(buf);
+  if (!ok) {
+    SD.remove(tmp);
+    Serial.print("HNX ERR transfer failed\n");
+    xferScreen("Transfer failed", C_RED, path, -1);
+    return;
+  }
+  if (SD.exists(path)) SD.remove(path);   // the page asked before replacing it
+  if (!SD.rename(tmp, path)) { SD.remove(tmp); Serial.print("HNX ERR can't rename\n"); return; }
+  xferReceived++;
+  ledFlash(LED_FLASH_SAVE);
+  Serial.print("HNX DONE\n");
+  xferScreen("Received", C_GREEN, path, 100);
+}
+
+// Runs one command. Returns false on BYE.
+static bool xferCommand(const char *cmd) {
+  String c(cmd);
+  if (c == "HELLO") {
+    uint64_t freeMB = (SD.totalBytes() - SD.usedBytes()) >> 20;
+    Serial.printf("HNX OK %s %s %u\n", APP_VERSION, HAVE_BT ? "BT" : "TOUCH", (unsigned)freeMB);
+  } else if (c.startsWith("LIST ")) {
+    File d = SD.open(c.substring(5));
+    if (d && d.isDirectory()) {
+      while (true) {
+        bool isDir = false;
+        String n = d.getNextFileName(&isDir);
+        if (!n.length()) break;
+        if (isDir) Serial.printf("HNX D %s\n", n.substring(n.lastIndexOf('/') + 1).c_str());
+      }
+    }
+    if (d) d.close();
+    Serial.print("HNX END\n");
+  } else if (c.startsWith("STAT ")) {
+    File f = SD.open(c.substring(5));
+    if (f) { Serial.printf("HNX YES %u\n", (unsigned)f.size()); f.close(); }
+    else Serial.print("HNX NO\n");
+  } else if (c.startsWith("MKDIR ")) {
+    String d = c.substring(6);
+    Serial.print(xferPathOk(d) && xferMkdirs(d) ? "HNX OK\n" : "HNX ERR can't make the folder\n");
+  } else if (c.startsWith("PUT ")) {
+    xferPut(cmd + 4);
+  } else if (c == "BYE") {
+    Serial.print("HNX BYE\n");
+    return false;
+  } else {
+    Serial.print("HNX ERR unknown command\n");
+  }
+  return true;
+}
+
+// The transfer screen. greeted: the page already said hello (from the game list).
+static void xferMode(bool greeted) {
+  xferReceived = 0;
+  Serial.flush();
+  Serial.end();
+  Serial.setRxBufferSize(XFER_CHUNK * 2 + 64);   // a whole chunk fits while the SD card writes
+  Serial.begin(XFER_BAUD);
+  lcd.fillScreen(C_BG);
+  uiHeader("USB transfer", "Back");
+  headerHints("USB transfer", SCR_W - 68, nullptr, nullptr);
+  bool connected = greeted;
+  if (greeted) xferCommand("HELLO");
+  xferScreen(connected ? "Connected" : "Waiting for the computer...", connected ? C_GREEN : C_TEXT, String(), -1);
+  btNavReset();
+  int x, y;
+  while (readTouch(x, y)) delay(10);
+  while (true) {
+    if (const char *cmd = xferPollLine()) {
+      if (!connected) { connected = true; xferScreen("Connected", C_GREEN, String(), -1); }
+      if (!xferCommand(cmd)) break;
+      continue;
+    }
+    int ev = btNav();
+    if (ev == NAV_BACK || ev == NAV_SYS) break;
+    if (bootPressed()) { while (bootPressed()) delay(10); break; }
+    if (readTouch(x, y)) {
+      while (readTouch(x, y)) delay(10);
+      if (y < 32 && x > SCR_W - 70) break;
+    }
+    delay(2);
+  }
+  Serial.flush();
+  Serial.end();
+  Serial.setRxBufferSize(256);
+  Serial.begin(XFER_BAUD);
+}
+
 // Board LED. Opened from Setup and from the pause menu.
 static void ledMenu() {
   while (true) {
@@ -2542,6 +2768,7 @@ static void settingsMenu() {
       { "Theme", theme().name },
       { "LED", ">" },
       { "Display & touch", ">" },
+      { "Transfer games (USB)", ">" },
       { "Free memory", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB (max " +
                        String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + ")" },
 #if HAVE_BT
@@ -2562,7 +2789,8 @@ static void settingsMenu() {
       case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
       case 7: ledMenu(); break;
       case 8: displayTouchMenu(); break;
-      case 10: controllerMenu(); break;
+      case 9: xferMode(false); break;
+      case 11: controllerMenu(); break;
     }
     applyDisplaySettings(false);
     saveSettings();
@@ -4111,6 +4339,9 @@ static int runBrowserLoop() {
       }
       if (curDir != rootDir) return -5;   // short press: folder up
     }
+    if (const char *cmd = xferPollLine()) {   // the "Send games" page said hello
+      if (!strcmp(cmd, "HELLO")) return -6;
+    }
     if (!readTouch(x, y)) {
       if (sdOk && !roms.empty()) { browserMarqueeRotate(); uiTick(); }
       delay(10);
@@ -4177,7 +4408,7 @@ size_t getArduinoLoopTaskStackSize(void) { return 6144; }
 
 // ----------------------------------------------------------------------------
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(XFER_BAUD);   // one speed for the boot log and USB transfers
   Serial.println("\n" APP_NAME " " APP_VERSION);
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
   lcdMutex = xSemaphoreCreateMutex();
@@ -4239,7 +4470,16 @@ void setup() {
 
 void loop() {
   int sel = runBrowser();
-  if (sel == -1) { settingsMenu(); return; }
+  if (sel == -1) {
+    settingsMenu();
+    if (xferReceived && sdOk) { xferReceived = 0; listDir(); }   // new games from USB
+    return;
+  }
+  if (sel == -6) {   // USB transfer started from the computer
+    xferMode(true);
+    if (xferReceived && sdOk) { xferReceived = 0; listDir(); }
+    return;
+  }
   if (sel == -2) { if (!sdOk) sdInit(); if (sdOk) scanRoms(); return; }
   if (sel == -5) { enterDir(parentDir(curDir)); return; }
   if (sel < 0) return;
