@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.7"
+#define APP_VERSION "2.19.8"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -865,7 +865,11 @@ static bool bootRaw() { return digitalRead(PIN_BOOT_BTN) == LOW; }
 // Boards with no touch screen: while no controller is connected, BOOT drives the menus
 // instead (tap = down, hold = select, hold 2 s = back; see btNav), so its usual jobs
 // (pause, folder up, rotate) are off until a controller connects.
-static bool bootNavMode() { return TOUCH_KIND == TOUCH_NONE && btCount() == 0; }
+// BOOT drives the menus when there is nothing else to drive them with: a board with no
+// touch screen, or one whose touch screen does not answer, so cancelling the calibration
+// does not leave the board unusable when no controller is paired either.
+static bool touchUnusable = false;
+static bool bootNavMode() { return (TOUCH_KIND == TOUCH_NONE || touchUnusable) && btCount() == 0; }
 static bool bootPressed() { return !bootNavMode() && bootRaw(); }
 
 // Waits for a tap (press + release). Returns false on timeout.
@@ -3000,6 +3004,42 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
   }
 }
 
+#if TOUCH_KIND == TOUCH_XPT_BUS
+// ---- touch wiring probe (diagnostic) --------------------------------------
+// These boards are built for an XPT2046 that shares the screen's SPI bus, which is
+// what Elecrow's own wiring notes describe. If a board turns out to have the chip on
+// its own pins instead - the way the 2.8" CYD does - the screen works and the touch
+// reads nothing, with no way to tell the two apart from the outside. So the touch test
+// also bit-bangs the other wiring (25/32/39, CS 33) and shows what comes back. Those
+// pins are not used by the screen, so this cannot disturb it, and it saves building a
+// second firmware just to find out which wiring a new board has.
+#define PROBE_SCLK 25
+#define PROBE_MOSI 32
+#define PROBE_MISO 39
+static void xptProbeBegin() {
+  pinMode(PROBE_SCLK, OUTPUT); digitalWrite(PROBE_SCLK, LOW);
+  pinMode(PROBE_MOSI, OUTPUT);
+  pinMode(PROBE_MISO, INPUT);
+  pinMode(PIN_TP_CS, OUTPUT);  digitalWrite(PIN_TP_CS, HIGH);
+}
+static uint16_t xptProbeRead(uint8_t cmd) {
+  uint16_t v = 0;
+  digitalWrite(PIN_TP_CS, LOW);
+  for (int i = 7; i >= 0; i--) {              // command byte, MSB first
+    digitalWrite(PROBE_MOSI, (cmd >> i) & 1);
+    digitalWrite(PROBE_SCLK, HIGH); delayMicroseconds(2);
+    digitalWrite(PROBE_SCLK, LOW);  delayMicroseconds(2);
+  }
+  for (int i = 0; i < 16; i++) {              // 16 bits back, the top 12 are the reading
+    digitalWrite(PROBE_SCLK, HIGH); delayMicroseconds(2);
+    v = (uint16_t)((v << 1) | (digitalRead(PROBE_MISO) ? 1 : 0));
+    digitalWrite(PROBE_SCLK, LOW);  delayMicroseconds(2);
+  }
+  digitalWrite(PIN_TP_CS, HIGH);
+  return (uint16_t)(v >> 4);
+}
+#endif
+
 static void touchTest() {
   lcd.fillScreen(C_BG);
   uiHeader("Touch test", "Done");
@@ -3008,6 +3048,12 @@ static void touchTest() {
   lcd.drawString("Draw with your finger. Dots should", 8, 40);
   lcd.drawString("appear under it. If not, run", 8, 58);
   lcd.drawString("Calibrate touch. BOOT/B = exit.", 8, 76);
+#if TOUCH_KIND == TOUCH_XPT_BUS
+  // Both wirings are read every pass: whichever set of numbers moves under a finger is
+  // the one this board actually uses. Report it and the board gets a proper build.
+  xptProbeBegin();
+  lcd.drawString("screen bus / own pins: one should move", 8, 132);
+#endif
   for (int i = 0; i < 4; i++) {
     int cx = (i & 1) ? SCR_W - 20 : 20, cy = (i & 2) ? SCR_H - 20 : 110;
     lcd.drawCircle(cx, cy, 8, C_GREEN);
@@ -3025,6 +3071,19 @@ static void touchTest() {
       lcd.setTextColor(C_TEXT, C_BG);
       lcd.drawString(b, 8, 96);
     }
+#if TOUCH_KIND == TOUCH_XPT_BUS
+    {
+      char b[44];
+      int bx = -1, by = -1;
+      readTouchRaw(bx, by);
+      lcd.setTextColor(C_TEXT, C_BG);
+      snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
+      lcd.drawString(b, 8, 150);
+      uint16_t px = xptProbeRead(0xD0), py = xptProbeRead(0x90), pz = xptProbeRead(0xB0);
+      snprintf(b, sizeof b, "own  x=%4u y=%4u z=%4u ", px, py, pz);
+      lcd.drawString(b, 8, 168);
+    }
+#endif
     delay(10);
   }
 }
@@ -3134,11 +3193,15 @@ static void calibrateTouch() {
   lcd.drawString("Touch calibration", SCR_W / 2, SCR_H / 2 - 20);
   lcd.setTextColor(C_DIM, C_BG);
   lcd.drawString("Tap the center of each cross", SCR_W / 2, SCR_H / 2 + 5);
-  lcd.drawString("(BOOT button = cancel)", SCR_W / 2, SCR_H / 2 + 25);
+  lcd.drawString("(BOOT button = skip)", SCR_W / 2, SCR_H / 2 + 25);
+  lcd.drawString("Skip if the taps do nothing: BOOT", SCR_W / 2, SCR_H / 2 + 45);
+  lcd.drawString("then works the menus on its own.", SCR_W / 2, SCR_H / 2 + 62);
   lcd.setTextDatum(top_left);
+  touchUnusable = false;   // while this screen is up, BOOT cancels rather than navigates
   for (int i = 0; i < 4; i++) {
     drawCross(TX[i], TY[i], C_ACCENT);
-    if (!sampleRaw(rx[i], ry[i])) { while (bootPressed()) delay(10); return; }
+    // Cancelled: the touch screen is not usable, so hand the menus to BOOT.
+    if (!sampleRaw(rx[i], ry[i])) { while (bootPressed()) delay(10); touchUnusable = true; return; }
     drawCross(TX[i], TY[i], C_BG);
     lcd.fillCircle(TX[i], TY[i], 5, C_GREEN);
   }
