@@ -11,3 +11,5 @@
 - `demos/` – the H@N demo ROMs (Game Boy/GBC and NES), built from scratch: `python3 build.py OUTDIR`.
   `gbrun.c` / `nesrun.c` run a ROM in the firmware's cores with scripted buttons and save frames
   (build lines at the top of each file).
+- `release_check.py` – run before pushing a release: fails if the page header, a manifest, a firmware image
+  or the demo zip doesn't match the version in `src/main.cpp`.
