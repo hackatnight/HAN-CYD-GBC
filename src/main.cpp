@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.4"
+#define APP_VERSION "2.19.5"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1846,14 +1846,16 @@ static volatile int fpsValue = 0;
 static volatile int emuFps = 0;
 // FPS counter ("drawn/emulated"): written into the outgoing pixel rows of every frame,
 // so the game image can't paint over it (it used to show up only now and then).
-static char fpsText[8] = "";
-static const uint8_t FPS_FONT[11][7] = {   // 5x7 glyphs: 0-9 and '/'
+static char fpsText[16] = "";
+static int sdPerSec = -1;   // 4 KB ROM pages read from the SD card in the last second (-1 = not streaming)
+static const uint8_t FPS_FONT[12][7] = {   // 5x7 glyphs: 0-9, '/' and 's'
   {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
   {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},
   {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
   {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}, {0x1F,0x01,0x02,0x04,0x08,0x08,0x08},
   {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
   {0x01,0x01,0x02,0x04,0x08,0x10,0x10},
+  {0x00,0x0E,0x10,0x0C,0x02,0x1C,0x00},   // 11: 's', for the SD page rate
 };
 #define FPS_BOX_H 9
 
@@ -1868,7 +1870,7 @@ static inline void fpsOverlay(uint16_t *row, int y, int w) {
   const uint16_t fg = __builtin_bswap16(C_GREEN);
   for (int i = 0; i < n; i++) {
     char ch = fpsText[i];
-    int g = ch == '/' ? 10 : (ch >= '0' && ch <= '9') ? ch - '0' : -1;
+    int g = ch == '/' ? 10 : ch == 's' ? 11 : (ch >= '0' && ch <= '9') ? ch - '0' : -1;
     if (g < 0) continue;
     uint8_t bits = FPS_FONT[g][gy];
     for (int b = 0; b < 5; b++)
@@ -1877,8 +1879,11 @@ static inline void fpsOverlay(uint16_t *row, int y, int w) {
 }
 
 static void fpsUpdate(int drawnPerSec, int emuPerSec) {
-  if (cfg.showFps) snprintf(fpsText, sizeof fpsText, "%d/%d", drawnPerSec, emuPerSec);
-  else fpsText[0] = 0;
+  if (!cfg.showFps) { fpsText[0] = 0; return; }
+  // A ROM too big for flash reads 4 KB pages off the SD card as it plays; that is what
+  // makes big games stutter, so show the rate next to the frame rate while it happens.
+  if (sdPerSec >= 0) snprintf(fpsText, sizeof fpsText, "%d/%d s%d", drawnPerSec, emuPerSec, sdPerSec);
+  else snprintf(fpsText, sizeof fpsText, "%d/%d", drawnPerSec, emuPerSec);
 }
 
 static inline uint16_t blend565(uint16_t a, uint16_t b) {
@@ -4333,6 +4338,7 @@ static void runGame(const RomEntry &r) {
   int64_t fpsT0 = next;
   unsigned gbLastWrites = gb_sram_writes;
   int gbDirtyChecks = 0;
+  unsigned lastRomFaults = gb_rom_faults;
 
   while (true) {
     // ---- input ----
@@ -4433,6 +4439,8 @@ static void runGame(const RomEntry &r) {
     if (now - fpsT0 >= 1000000) {
       fpsValue = (int)drawn;
       emuFps = (int)frames;
+      sdPerSec = streaming ? (int)(gb_rom_faults - lastRomFaults) : -1;
+      lastRomFaults = gb_rom_faults;
       fpsUpdate(fpsValue, emuFps);
       drawn = 0;
       frames = 0;
@@ -4760,6 +4768,7 @@ static void runNes(const RomEntry &r) {
     if (now - fpsT0 >= 1000000) {
       fpsValue = (int)drawn;
       emuFps = (int)frames;
+      sdPerSec = -1;   // the NES core keeps the whole ROM in flash
       fpsUpdate(fpsValue, emuFps);
       drawn = 0;
       frames = 0;

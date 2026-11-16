@@ -538,6 +538,10 @@ and Pro Action Replay codes work.
 
 **Settings are saved on the board** the moment you change them, and they're still there after turning it off and on.
 That covers Game volume, music on/off, tune and volume, theme, LED, scaling, orientation, button layout and so on.
+
+With **Show FPS** on, a game that is too big for flash shows a third number, `s12`: the 4 KB pages it read from
+the SD card in the last second. The first number is frames drawn, the second frames emulated (60 is full speed).
+A high `s` number is why a 4 MB game stutters - the parts that don't fit in flash are being fetched as you play.
 - For example, with *Music: Off* the board starts silent.
 - Two things put everything back to the defaults:
   - **holding BOOT while powering on**
