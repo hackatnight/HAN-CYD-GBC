@@ -259,8 +259,8 @@ and Pro Action Replay codes work.
   - NES: Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`
   - Any system: `AAAA=VV`
   - Up to 4 codes per cheat, joined with `+`
-- **Game Genie codes** change the game program itself rather than memory. They're listed as "n/a" and can't be
-  switched on yet.
+- **Game Genie codes** change the game program itself rather than memory, so this cheat system can't use them.
+  They're listed as "n/a".
 - **Files:** one RetroArch-style `.cht` file per game in `/CHEATS/GB`, `/CHEATS/GBC` or `/CHEATS/NES`.
   The emulator finds the file even if the name doesn't match the ROM exactly: it ignores
   capitals, punctuation and anything in `( )` or `[ ]`, and accepts a single file whose name starts
@@ -408,7 +408,7 @@ licensed games.
 | Controller won't pair | Bluetooth build only, PS4 controllers only. Hold SHARE + PS until the light bar flashes quickly, then *Pair new controller*. |
 | A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |
 | No cheats for a game | The `.cht` file name must match the game's name (case, punctuation and `( )` / `[ ]` tags are ignored). Rename the file if needed. |
-| NES game says "Mapper N isn't supported" | That cartridge chip isn't emulated yet (see the list above). |
+| NES game says "Mapper N isn't supported" | That cartridge chip isn't emulated (see the list above). Bootleg carts like the NES Street Fighter ports aren't supported. |
 
 If the board restarts on its own, the next boot tells you why (power dip, crash or freeze).
 
@@ -460,9 +460,3 @@ Project layout:
   firmware as a whole is distributed under the **GNU GPL v2** (see [LICENSE](LICENSE)).
 
 No games are included. Use only game files you have the right to use.
-
-## Roadmap
-
-- Game Genie codes and on-screen cheat entry
-- NES bootleg mappers 91 and 187 (Street Fighter II/III ports), if flash allows
-- More themes and menu effects

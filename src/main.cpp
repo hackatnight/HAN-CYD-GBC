@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.8.0"
+#define APP_VERSION "2.8.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -2095,6 +2095,7 @@ static bool setupCartRam(int capSlots, size_t reserve) {
 // Menus
 // ----------------------------------------------------------------------------
 struct MenuItem { String label; String value; };
+static bool menuByPad = false;   // the menus were last used with the controller (not touch)
 
 // Draws a list of items; returns the index tapped (or -1 if header button tapped)
 // Draws a list; returns the index chosen, -1 for the header button (or B on a
@@ -2142,37 +2143,41 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
       lx1 -= lcd.textWidth(items[i].value) + 6;
     }
     // a label too long for the row is cut off; the selected one scrolls
-    if (hi && marqueeSet(14, lx1, yc, items[i].label, C_TEXT, bg)) {
+    if (hi && menuByPad && marqueeSet(14, lx1, yc, items[i].label, C_TEXT, bg)) {
       marqueeDraw(0);
     } else {
-      lcd.setClipRect(14, y, max(1, lx1 - 14), rowH);
+      String l = items[i].label;
+      if (lcd.textWidth(l) > lx1 - 14) {   // cut off: end it with "~"
+        while (l.length() > 1 && lcd.textWidth(l + "~") > lx1 - 14) l.remove(l.length() - 1);
+        l += "~";
+      }
       lcd.setTextColor(C_TEXT, bg);
       lcd.setTextDatum(middle_left);
-      lcd.drawString(items[i].label, 14, yc);
-      lcd.clearClipRect();
+      lcd.drawString(l, 14, yc);
     }
     lcd.setTextDatum(top_left);
   };
-  // with no row selected (touch), cut-off labels take turns scrolling
-  int marqNext = 0;
+  // with touch (or no row selected), cut-off labels take turns scrolling
+  int marqNext = 0, marqRow = -1;
   auto marqueeRotate = [&]() {
-    if (sel >= 0 || (marq.on && marq.loops == 0)) return;
+    if ((sel >= 0 && menuByPad) || (marq.on && marq.loops == 0)) return;
     for (int k = 0; k < visible; k++) {
       int i = top + (marqNext + k) % visible;
-      if (i >= n) continue;
+      if (i >= n || i == marqRow) continue;
       int y = y0 + (i - top) * pitch, lx1 = SCR_W - (scroll ? 16 : 14) - 4;
       lcd.setFont(&fonts::Font2);
       if (items[i].value.length()) lx1 -= lcd.textWidth(items[i].value) + 6;
-      if (marq.on && marq.yc == y + rowH / 2 && k == 0) continue;   // just had its turn
-      if (marqueeSet(14, lx1, y + rowH / 2, items[i].label, C_TEXT, C_PANEL)) {
-        marqNext = (marqNext + k + 1) % visible;
-        return;
-      }
+      if (lcd.textWidth(items[i].label) <= lx1 - 14) continue;
+      if (marqRow >= 0) { int r = marqRow; marqRow = -1; marqueeOff(); drawRow(r); }   // back to its "~" form
+      marqueeSet(14, lx1, y + rowH / 2, items[i].label, C_TEXT, i == sel ? C_HILITE : C_PANEL);
+      marqRow = i;
+      marqNext = (marqNext + k + 1) % visible;
+      return;
     }
-    marqueeOff();
+    if (marqRow >= 0 && marq.on) marq.loops = 0;   // the only long label: it scrolls again
   };
   auto drawAll = [&]() {
-    glowOff(); marqueeOff();
+    glowOff(); marqueeOff(); marqRow = -1;
     lcd.fillRect(0, y0, SCR_W, avail, C_BG);
     for (int i = top; i < top + visible && i < n; i++) drawRow(i);
     if (scroll) {
@@ -2202,6 +2207,7 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
         }
         delay(15);
       }
+      menuByPad = false;
       if (moved > 10) continue;
       if (sy < 32 && sx > SCR_W - 70) return finish(-1);
       if (sy >= y0) {
@@ -2210,7 +2216,9 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
       }
       continue;
     }
-    switch (btNav()) {
+    int navEv = btNav();
+    if (navEv != NAV_NONE) menuByPad = true;
+    switch (navEv) {
       case NAV_UP:   { int o = sel; sel = sel <= 0 ? n - 1 : sel - 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
       case NAV_DOWN: { int o = sel; sel = (sel < 0 || sel >= n - 1) ? 0 : sel + 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
       case NAV_OK:   if (sel < 0) { sel = top; drawRow(sel); } else return finish(sel); break;
@@ -3206,11 +3214,8 @@ static String cheatsLabel() {
 static void cheatsMenu() {
   while (true) {
     std::vector<MenuItem> it;
-    for (auto &c : cheats) {
-      String d = c.desc;
-      if (d.length() > 22) d = d.substring(0, 21) + "~";
-      it.push_back({ d, c.ok ? String(c.on ? "On" : "Off") : String("n/a") });
-    }
+    for (auto &c : cheats)   // full names: the list cuts them to fit and scrolls the long ones
+      it.push_back({ c.desc, c.ok ? String(c.on ? "On" : "Off") : String("n/a") });
     int nc = (int)cheats.size();
     it.push_back({ "Find a cheat...", findMask ? String(findCount) + " left" : String("") });
     bool anyOn = false;
