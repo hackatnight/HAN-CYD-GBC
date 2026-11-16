@@ -54,6 +54,9 @@
 //   BOARD_W328C   2.8" JC2432W328C: ST7789 IPS screen, capacitive CST820 (wired like the 2.4" C)
 //   BOARD_024N    2.4" ESP32-2432S024N: no touch screen (Bluetooth controller only)
 //   BOARD_032N    3.2" ESP32-2432S032N: ST7789 screen, no touch (Bluetooth controller only)
+//   BOARD_CROW    Elecrow CrowPanel ESP32 2.4" / 2.8" (ESP32-WROOM versions): like the 2.4" R
+//                 (resistive XPT2046 on the screen's bus), but no RGB LED (GPIO16/17 are its
+//                 UART1 port) and no touch interrupt line
 // All are the original ESP32 (4 MB flash, no PSRAM), same SD card, speaker (GPIO26),
 // RGB LED (4/16/17) and BOOT button. All but the 3.5" are 240x320; the 3.5" shows the
 // same 240x320 picture in the middle of its screen.
@@ -69,6 +72,7 @@
 // #define BOARD_W328C
 // #define BOARD_024N
 // #define BOARD_032N
+// #define BOARD_CROW
 #define TOUCH_CST     0   // CST820 on I2C (2.4" C)
 #define TOUCH_XPT_OWN 1   // XPT2046 on its own pins, software SPI (2.8" R, CYD2USB)
 #define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R, 3.2" R, 3.5" R)
@@ -139,6 +143,12 @@
 #define DEFAULT_PANEL 1    // ST7789 (IPS)
 #define DEFAULT_INVERT 1
 #define BL_PIN 27
+#elif defined(BOARD_CROW)
+#define BOARD_NAME "CrowPanel-ESP32-2.4-2.8"
+#define TOUCH_KIND TOUCH_XPT_BUS
+#define BL_PIN 27
+#define TP_INT_PIN -1      // no touch interrupt line: touch is polled
+#define HAS_LED 0          // no RGB LED; GPIO16/17 go to the UART1 connector
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -156,6 +166,9 @@
 #endif
 #ifndef CAL_AT_START
 #define CAL_AT_START 0
+#endif
+#ifndef HAS_LED
+#define HAS_LED 1          // RGB LED on GPIO 4 / 16 / 17
 #endif
 #if TOUCH_KIND == TOUCH_NONE && !HAVE_BT
 #error "Boards with no touch screen need the Bluetooth build"
@@ -196,7 +209,11 @@
 #define PIN_TP_INT   36
 #elif TOUCH_KIND == TOUCH_XPT_BUS
 #define PIN_TP_CS    33   // on the screen's bus (14 / 13 / 12)
+#ifdef TP_INT_PIN
+#define PIN_TP_INT   TP_INT_PIN
+#else
 #define PIN_TP_INT   36
+#endif
 #elif TOUCH_KIND == TOUCH_I2C_ANY
 #define PIN_TP_SDA   33
 #define PIN_TP_SCL   32
@@ -215,7 +232,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.16.0"
+#define APP_VERSION "2.17.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -948,6 +965,9 @@ static void ledTimer(void *) {
   ledWrite(ledBaseColor(), level);
 }
 static void ledInit() {
+#if !HAS_LED
+  return;   // no LED on this board: leave its pins alone
+#endif
   ledc_timer_config_t t = {};
   t.speed_mode = LEDC_LOW_SPEED_MODE;
   t.duty_resolution = LEDC_TIMER_8_BIT;
@@ -3496,7 +3516,7 @@ static void settingsMenu() {
       { "Brightness", String(cfg.brightness * 100 / 255) + "%" },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
       { "Theme", theme().name },
-      { "LED", ">" },
+      { "LED", ">" },   // index 8: removed below on boards without an LED
       { "Display & touch", ">" },
       { "Transfer games (USB)", ">" },
       { "Free memory", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB (max " +
@@ -3505,8 +3525,14 @@ static void settingsMenu() {
       { "Controller (Bluetooth)", btCount() ? String(btCount()) + " connected" : String(">") },
 #endif
     };
+#if !HAS_LED
+    it.erase(it.begin() + 8);
+#endif
     static int selSet = -1;
     int i = runList("Settings", "Back", it, &selSet);
+#if !HAS_LED
+    if (i >= 8) i++;
+#endif
     switch (i) {
       case -3:
       case -1: saveSettings(); return;
@@ -4035,8 +4061,14 @@ static PauseResult pauseMenu() {
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
+#if !HAS_LED
+    it.erase(it.begin() + 10);   // "LED"
+#endif
     static int selPause = -1;
     int i = runList(gb_rom_title(), nullptr, it, &selPause);
+#if !HAS_LED
+    if (i >= 10) i++;
+#endif
     switch (i) {
       case -1:
       case -3:
@@ -4426,8 +4458,14 @@ static PauseResult nesPauseMenu(const char *title) {
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
+#if !HAS_LED
+    it.erase(it.begin() + 10);   // "LED"
+#endif
     static int selPause = -1;
     int i = runList(title, nullptr, it, &selPause);
+#if !HAS_LED
+    if (i >= 10) i++;
+#endif
     switch (i) {
       case -1:
       case -3:

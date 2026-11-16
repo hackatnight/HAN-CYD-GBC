@@ -3,7 +3,7 @@
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
 "CYD2USB", the 2.8" JC2432W328C, the 3.2" ESP32-2432S032C and ESP32-2432S032R, the 3.5" ESP32-3248S035C and
-ESP32-3248S035R, and the touch-less ESP32-2432S024N and ESP32-2432S032N**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
+ESP32-3248S035R, the touch-less ESP32-2432S024N and ESP32-2432S032N, and the Elecrow CrowPanel ESP32 2.4" and 2.8"**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
@@ -55,6 +55,7 @@ and a one-click web flasher.
 | **JC2432W328C** | 2.8" ST7789 IPS, CST820 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S024N** | 2.4" ILI9341, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S032N** | 3.2" ST7789 IPS, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"** | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 
 ✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
 
@@ -67,9 +68,9 @@ and a one-click web flasher.
 - Tried a board? **[Send a board test report](https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md)**
   and the table gets updated.
 
-All of them are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM), with a microSD slot, a speaker
-connector and an RGB LED, so every feature works on every board. They differ in the backlight pin (21 on 2.8",
-27 on the others), the touch chip and the screen chip.
+All of them are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM), with a microSD slot and a speaker
+connector, so every feature works on every board. All but the CrowPanel have an RGB LED. They differ in the backlight
+pin (21 on the 2.8" CYDs, 27 on the others), the touch chip and the screen chip.
 
 **Which build?** Check the model number on the back of the board.
 - **2.4":** the last letter is the touch type: **C** = capacitive (your fingertip), **R** = resistive (press firmly).
@@ -80,6 +81,11 @@ connector and an RGB LED, so every feature works on every board. They differ in 
   controller; see [Boards with no touch screen](#boards-with-no-touch-screen).
 - **JC2432W328C:** a 2.8" capacitive board from another maker (Guition), wired like the 2.4" C but with an ST7789
   IPS screen. It asks for a touch calibration on first start.
+- **Elecrow CrowPanel ESP32 HMI 2.4" and 2.8":** one build for both (the original ESP32-WROOM versions, *not* the
+  "Advance" ESP32-S3 ones). They're wired like the 2.4" R (ILI9341, resistive touch on the screen's bus, backlight 27,
+  same SD card and speaker pins), with two differences: there's no RGB LED, so the LED settings are left out (its
+  pins 16 and 17 go to the UART1 connector instead), and there's no touch interrupt line, so touch is polled.
+  The CrowPanel 3.5" isn't supported yet (ILI9488 screen, two hardware versions with different pins).
 
 ### Boards with no touch screen
 
@@ -183,7 +189,7 @@ Steps:
 
    On any **other board**, use the build with its model number: **ESP32-2432S024R**, **ESP32-2432S028R** (one USB
    port), **CYD2USB** (two USB ports), **ESP32-2432S028C**, **JC2432W328C**, **ESP32-2432S032R / C / N**,
-   **ESP32-2432S024N** or **ESP32-3248S035R / C**.
+   **ESP32-2432S024N**, **ESP32-3248S035R / C** or the **Elecrow CrowPanel 2.4" / 2.8"** (one build for both).
    Each has touch and Bluetooth, and 2.8 MB for games.
    See [Testing the new builds](#testing-the-new-builds-everything-but-the-24-c).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
@@ -242,6 +248,8 @@ esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-3248S035C.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-JC2432W328C.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S024N.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032N.bin
+# Elecrow CrowPanel ESP32 2.4" / 2.8":
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-CrowPanel-2.4-2.8.bin
 ```
 
 ### Option 3: Espressif's online tool
@@ -639,7 +647,7 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
    - For another board, define one of `BOARD_024R`, `BOARD_028R`, `BOARD_CYD2USB`, `BOARD_028C`, `BOARD_032R`,
-     `BOARD_032C`, `BOARD_035R`, `BOARD_035C`, `BOARD_W328C`, `BOARD_024N` or `BOARD_032N` (the last two need the
+     `BOARD_032C`, `BOARD_035R`, `BOARD_035C`, `BOARD_W328C`, `BOARD_CROW`, `BOARD_024N` or `BOARD_032N` (the last two need the
      Bluetooth build). Either
      uncomment the line near the top of `src/main.cpp`, or with arduino-cli add
      `--build-property compiler.cpp.extra_flags=-DBOARD_028R` (for example). Use the Bluetooth partition layout.
