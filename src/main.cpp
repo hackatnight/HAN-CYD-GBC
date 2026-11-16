@@ -51,6 +51,9 @@
 //   BOARD_032C    3.2" ESP32-2432S032C: ST7789 screen, capacitive GT911
 //   BOARD_035R    3.5" ESP32-3248S035R: 320x480 ST7796 screen, resistive XPT2046 on its bus
 //   BOARD_035C    3.5" ESP32-3248S035C: 320x480 ST7796 screen, capacitive GT911
+//   BOARD_W328C   2.8" JC2432W328C: ST7789 IPS screen, capacitive CST820 (wired like the 2.4" C)
+//   BOARD_024N    2.4" ESP32-2432S024N: no touch screen (Bluetooth controller only)
+//   BOARD_032N    3.2" ESP32-2432S032N: ST7789 screen, no touch (Bluetooth controller only)
 // All are the original ESP32 (4 MB flash, no PSRAM), same SD card, speaker (GPIO26),
 // RGB LED (4/16/17) and BOOT button. All but the 3.5" are 240x320; the 3.5" shows the
 // same 240x320 picture in the middle of its screen.
@@ -63,10 +66,14 @@
 // #define BOARD_032C
 // #define BOARD_035R
 // #define BOARD_035C
+// #define BOARD_W328C
+// #define BOARD_024N
+// #define BOARD_032N
 #define TOUCH_CST     0   // CST820 on I2C (2.4" C)
 #define TOUCH_XPT_OWN 1   // XPT2046 on its own pins, software SPI (2.8" R, CYD2USB)
 #define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R, 3.2" R, 3.5" R)
 #define TOUCH_I2C_ANY 3   // CST820 or GT911 on I2C, whichever answers (2.8" C, 3.2" C, 3.5" C)
+#define TOUCH_NONE    4   // no touch screen ("N" boards): played with a Bluetooth controller
 // PANEL_CHOICE: the board ships with an ILI9341 or an ST7789 ("Screen chip" setting).
 // PANEL_BIG: 320x480 ST7796 (3.5"). BL_PIN: backlight.
 #if defined(BOARD_CYD2USB)
@@ -113,6 +120,25 @@
 #define PANEL_BIG 1
 #define BL_PIN 27
 #define TP_INT_PIN 21
+#elif defined(BOARD_W328C)
+#define BOARD_NAME "JC2432W328C"
+#define TOUCH_KIND TOUCH_CST
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789 (IPS)
+#define DEFAULT_INVERT 1
+#define BL_PIN 27
+#define CAL_AT_START 1     // touch wiring not confirmed on this board: calibrate once
+#elif defined(BOARD_024N)
+#define BOARD_NAME "ESP32-2432S024N"
+#define TOUCH_KIND TOUCH_NONE
+#define BL_PIN 27
+#elif defined(BOARD_032N)
+#define BOARD_NAME "ESP32-2432S032N"
+#define TOUCH_KIND TOUCH_NONE
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789 (IPS)
+#define DEFAULT_INVERT 1
+#define BL_PIN 27
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -128,10 +154,16 @@
 #ifndef PANEL_BIG
 #define PANEL_BIG 0
 #endif
+#ifndef CAL_AT_START
+#define CAL_AT_START 0
+#endif
+#if TOUCH_KIND == TOUCH_NONE && !HAVE_BT
+#error "Boards with no touch screen need the Bluetooth build"
+#endif
 #define TOUCH_RESISTIVE (TOUCH_KIND == TOUCH_XPT_OWN || TOUCH_KIND == TOUCH_XPT_BUS)
 // Ask for a touch calibration at the first start (where the touch layer isn't known to
 // line up with the screen out of the box)
-#define TOUCH_ASK_CAL (TOUCH_RESISTIVE || TOUCH_KIND == TOUCH_I2C_ANY)
+#define TOUCH_ASK_CAL (TOUCH_RESISTIVE || TOUCH_KIND == TOUCH_I2C_ANY || CAL_AT_START)
 #ifndef DEFAULT_PANEL
 #define DEFAULT_PANEL 0    // ILI9341
 #define DEFAULT_INVERT 0
@@ -140,7 +172,7 @@
 // Default orientation. LovyanGFX rotation 2 = portrait, confirmed correct on the
 // ESP32-2432S024C (touch lines up with no transform); 3 = Landscape L (board
 // turned counter-clockwise). Landscape needs a controller, so it's BT-only.
-#if HAVE_BT && TOUCH_KIND == TOUCH_CST
+#if HAVE_BT && (TOUCH_KIND == TOUCH_CST || TOUCH_KIND == TOUCH_NONE)
 #define DEFAULT_ROTATION 3
 #else   // the other boards start in portrait so they can be played by touch right away
 #define DEFAULT_ROTATION 2
@@ -183,7 +215,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.15.1"
+#define APP_VERSION "2.16.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -214,7 +246,7 @@ public:
   lgfx::Light_PWM light;
 #if TOUCH_RESISTIVE
   lgfx::Touch_XPT2046 touch;
-#else
+#elif TOUCH_KIND != TOUCH_NONE
   lgfx::Touch_CST816S touch;   // CST820
 #endif
 #if TOUCH_KIND == TOUCH_I2C_ANY
@@ -261,7 +293,9 @@ public:
 #endif
       p.config(c);
       p.setLight(&light);
+#if TOUCH_KIND != TOUCH_NONE
       p.setTouch(&touch);
+#endif
     };
     {
       auto c = light.config();
@@ -297,7 +331,7 @@ public:
       c.pin_cs = PIN_TP_CS;
       touch.config(c);
     }
-#else
+#elif TOUCH_KIND != TOUCH_NONE
     {
       auto c = touch.config();
       c.x_min = 0; c.x_max = 239;
@@ -434,6 +468,9 @@ static void loadSettings() {
   cfg.showFps = prefs.getUChar("fps", cfg.showFps);
   cfg.rotation = prefs.getUChar("lgrot", cfg.rotation) & 3;
   cfg.touchPad = prefs.getUChar("tpad", cfg.touchPad);
+#if TOUCH_KIND == TOUCH_NONE
+  cfg.touchPad = 2;    // no touch screen: never draw the on-screen buttons
+#endif
   cfg.mirrorFix = prefs.getUChar("mirr", cfg.mirrorFix);
   cfg.invert = prefs.getUChar("inv", cfg.invert);
   cfg.panelType = prefs.getUChar("pnl", cfg.panelType) & 1;
@@ -441,6 +478,9 @@ static void loadSettings() {
   cfg.touchFlipX = prefs.getUChar("tfx", cfg.touchFlipX);
   cfg.touchFlipY = prefs.getUChar("tfy", cfg.touchFlipY);
   cfg.btEnabled = prefs.getUChar("bt", cfg.btEnabled);
+#if TOUCH_KIND == TOUCH_NONE
+  cfg.btEnabled = 1;   // the only way to play: never let it be switched off
+#endif
   cfg.btLayout = prefs.getUChar("btlay", cfg.btLayout);
   cfg.calValid = prefs.getUChar("calok", 0);
   cfg.calSwap = prefs.getUChar("calsw", 0);
@@ -656,6 +696,27 @@ enum NavEvent { NAV_NONE, NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_OK, NAV_BAC
 
 static uint32_t navRepeatAt = 0;
 static bool navFromStart = false;   // the last NAV_OK came from Start (Options), not A
+static bool bootBtnDown = false, bootBtnUsed = true;   // BOOT as a menu button (bootNavMode)
+static uint32_t bootBtnT0 = 0;
+static bool bootRaw();
+static bool bootNavMode();
+
+// tap = down, hold 0.6-2 s and let go = OK, hold 2 s = back
+static int bootNav() {
+  if (!bootNavMode()) { bootBtnDown = false; bootBtnUsed = true; return NAV_NONE; }
+  bool down = bootRaw();
+  uint32_t now = millis();
+  if (down && !bootBtnDown) { bootBtnDown = true; bootBtnUsed = false; bootBtnT0 = now; return NAV_NONE; }
+  if (down) {
+    if (!bootBtnUsed && now - bootBtnT0 >= 2000) { bootBtnUsed = true; return NAV_BACK; }
+    return NAV_NONE;
+  }
+  if (!bootBtnDown) return NAV_NONE;
+  bootBtnDown = false;
+  if (bootBtnUsed) return NAV_NONE;
+  bootBtnUsed = true;
+  return now - bootBtnT0 >= 600 ? NAV_OK : NAV_DOWN;
+}
 
 static int btNav() {
   static uint8_t last = 0xFF;   // 0xFF: ignore whatever is held when a menu opens
@@ -682,12 +743,14 @@ static int btNav() {
   }
   last = p;
   lastSys = sys;
+  if (ev == NAV_NONE) { ev = bootNav(); if (ev == NAV_OK) navFromStart = false; }
   return ev;
 }
 
 // Call when entering a new screen so a button still held from before isn't seen as a press.
 static void btNavReset() {
   btPoll();
+  bootBtnDown = bootRaw(); bootBtnUsed = true;   // BOOT still held from before: ignore it
   btNav();   // latches the current state; a held button only counts after release
   navRepeatAt = millis() + 380;
 }
@@ -733,6 +796,10 @@ static inline void screenToPanel(float sx, float sy, float &px, float &py) {
 }
 
 static bool readTouchRaw(int &rx, int &ry) {
+#if TOUCH_KIND == TOUCH_NONE
+  (void)rx; (void)ry;
+  return false;
+#else
   lgfx::touch_point_t tp;
 #if TOUCH_KIND == TOUCH_XPT_BUS
   // the touch chip shares the screen's bus: wait until the other core isn't drawing
@@ -745,6 +812,7 @@ static bool readTouchRaw(int &rx, int &ry) {
 #endif
   rx = tp.x; ry = tp.y;
   return rx >= 0 && rx < 4096 && ry >= 0 && ry < 4096;
+#endif
 }
 
 static bool readTouch(int &x, int &y) {
@@ -759,7 +827,12 @@ static bool readTouch(int &x, int &y) {
   return true;
 }
 
-static bool bootPressed() { return digitalRead(PIN_BOOT_BTN) == LOW; }
+static bool bootRaw() { return digitalRead(PIN_BOOT_BTN) == LOW; }
+// Boards with no touch screen: while no controller is connected, BOOT drives the menus
+// instead (tap = down, hold = select, hold 2 s = back; see btNav), so its usual jobs
+// (pause, folder up, rotate) are off until a controller connects.
+static bool bootNavMode() { return TOUCH_KIND == TOUCH_NONE && btCount() == 0; }
+static bool bootPressed() { return !bootNavMode() && bootRaw(); }
 
 // Waits for a tap (press + release). Returns false on timeout.
 static void bottomHint(const char *label);
@@ -2986,38 +3059,41 @@ static void calibrateTouch() {
 }
 
 static void displayTouchMenu() {
+  enum { DT_ORIENT, DT_CAL, DT_CALCLR, DT_TEST, DT_FLIP, DT_MIRROR, DT_INVERT, DT_SWAP, DT_CHIP };
   while (true) {
-    std::vector<MenuItem> it = {
-      { "Orientation", orientName() },
-      { "Calibrate touch", cfg.calValid ? "calibrated" : "default" },
-      { "Clear calibration", "" },
-      { "Touch test", "" },
-      { "Touch flip X / Y", String(cfg.touchFlipX ? "X" : "-") + " / " + (cfg.touchFlipY ? "Y" : "-") },
-      { "Mirror fix", cfg.mirrorFix ? "On" : "Off" },
-      { "Invert colors", cfg.invert ? "On" : "Off" },
-      { "Swap red/blue", cfg.swapRB ? "On" : "Off" },
-#if PANEL_CHOICE
-      { "Screen chip", cfg.panelType ? "ST7789" : "ILI9341" },   // if the colors or picture look wrong
+    std::vector<MenuItem> it;
+    std::vector<int> id;
+    auto add = [&](int k, const char *label, String value) { it.push_back({ label, value }); id.push_back(k); };
+    add(DT_ORIENT, "Orientation", orientName());
+#if TOUCH_KIND != TOUCH_NONE
+    add(DT_CAL, "Calibrate touch", cfg.calValid ? "calibrated" : "default");
+    add(DT_CALCLR, "Clear calibration", "");
+    add(DT_TEST, "Touch test", "");
+    add(DT_FLIP, "Touch flip X / Y", String(cfg.touchFlipX ? "X" : "-") + " / " + (cfg.touchFlipY ? "Y" : "-"));
 #endif
-    };
+    add(DT_MIRROR, "Mirror fix", cfg.mirrorFix ? "On" : "Off");
+    add(DT_INVERT, "Invert colors", cfg.invert ? "On" : "Off");
+    add(DT_SWAP, "Swap red/blue", cfg.swapRB ? "On" : "Off");
+#if PANEL_CHOICE
+    add(DT_CHIP, "Screen chip", cfg.panelType ? "ST7789" : "ILI9341");   // if the colors or picture look wrong
+#endif
     static int selDT = -1;
-    int i = runList("Display & touch", "Back", it, &selDT);
+    int i = runList(TOUCH_KIND == TOUCH_NONE ? "Display" : "Display & touch", "Back", it, &selDT);
+    if (i < 0) { saveSettings(); return; }
     bool reinit = false;
-    switch (i) {
-      case -3:
-      case -1: saveSettings(); return;
-      case 0: cycleOrientation(); break;
-      case 1: calibrateTouch(); break;
-      case 2: cfg.calValid = 0; break;
-      case 3: touchTest(); break;
-      case 4: {
-        int s = (cfg.touchFlipX ? 1 : 0) | (cfg.touchFlipY ? 2 : 0);
-        s = (s + 1) & 3; cfg.touchFlipX = s & 1; cfg.touchFlipY = (s >> 1) & 1; break;
+    switch (id[i]) {
+      case DT_ORIENT: cycleOrientation(); break;
+      case DT_CAL: calibrateTouch(); break;
+      case DT_CALCLR: cfg.calValid = 0; break;
+      case DT_TEST: touchTest(); break;
+      case DT_FLIP: {
+        int st = (cfg.touchFlipX ? 1 : 0) | (cfg.touchFlipY ? 2 : 0);
+        st = (st + 1) & 3; cfg.touchFlipX = st & 1; cfg.touchFlipY = (st >> 1) & 1; break;
       }
-      case 5: cfg.mirrorFix ^= 1; break;
-      case 6: cfg.invert ^= 1; break;
-      case 7: cfg.swapRB ^= 1; reinit = true; break;
-      case 8: cfg.panelType ^= 1; reinit = true; break;
+      case DT_MIRROR: cfg.mirrorFix ^= 1; break;
+      case DT_INVERT: cfg.invert ^= 1; break;
+      case DT_SWAP: cfg.swapRB ^= 1; reinit = true; break;
+      case DT_CHIP: cfg.panelType ^= 1; reinit = true; break;
     }
     applyDisplaySettings(reinit);
     saveSettings();
@@ -3076,22 +3152,27 @@ static void pairScreen() {
 }
 
 static void controllerMenu() {
+  enum { CM_BT, CM_CONN, CM_PAIR, CM_LAYOUT, CM_TOUCHPAD, CM_FORGET };
   while (true) {
     String st = btStatus();
-    std::vector<MenuItem> it = {
-      { "Bluetooth", cfg.btEnabled ? "On" : "Off" },
-      { "Connected", st.length() ? st.substring(0, 18) : String("none") },
-      { "Pair new controller", "" },
-      { "Button layout", cfg.btLayout ? "Xbox (A=bottom)" : "Game Boy" },
-      { "On-screen controls", touchPadName() },
-      { "Forget all controllers", "" },
-    };
+    std::vector<MenuItem> it;
+    std::vector<int> id;
+    auto add = [&](int k, const char *label, String value) { it.push_back({ label, value }); id.push_back(k); };
+#if TOUCH_KIND != TOUCH_NONE   // no touch screen: Bluetooth is the only way to play, so it stays on
+    add(CM_BT, "Bluetooth", cfg.btEnabled ? "On" : "Off");
+#endif
+    add(CM_CONN, "Connected", st.length() ? st.substring(0, 18) : String("none"));
+    add(CM_PAIR, "Pair new controller", "");
+    add(CM_LAYOUT, "Button layout", cfg.btLayout ? "Xbox (A=bottom)" : "Game Boy");
+#if TOUCH_KIND != TOUCH_NONE
+    add(CM_TOUCHPAD, "On-screen controls", touchPadName());
+#endif
+    add(CM_FORGET, "Forget all controllers", "");
     static int selCtl = -1;
     int i = runList("Controller", "Back", it, &selCtl);
-    switch (i) {
-      case -3:
-      case -1: saveSettings(); return;
-      case 0:
+    if (i < 0) { saveSettings(); return; }
+    switch (id[i]) {
+      case CM_BT:
         cfg.btEnabled ^= 1;
 #if HAVE_BT
         if (cfg.btEnabled) btInit();
@@ -3108,14 +3189,14 @@ static void controllerMenu() {
 #endif
         btUpdateScanning();
         break;
-      case 2:
+      case CM_PAIR:
         if (!cfg.btEnabled) cfg.btEnabled = 1;
         btInit();
         pairScreen();
         break;
-      case 3: cfg.btLayout ^= 1; break;
-      case 4: cfg.touchPad = (cfg.touchPad + 1) % 3; break;
-      case 5:
+      case CM_LAYOUT: cfg.btLayout ^= 1; break;
+      case CM_TOUCHPAD: cfg.touchPad = (cfg.touchPad + 1) % 3; break;
+      case CM_FORGET:
         btForgetAll();
         lcd.fillScreen(C_BG);
         uiHeader("Controller");
@@ -4163,7 +4244,7 @@ static void runGame(const RomEntry &r) {
         menuNow = true;   // no on-screen pad: tap anywhere = menu
       }
     }
-    if (bootPressed()) menuNow = true;
+    if (bootRaw()) menuNow = true;
     bool btSys = false;
     uint8_t btPad = btReadPad(&btSys);
     if (btSys) menuNow = true;
@@ -4490,7 +4571,7 @@ static void runNes(const RomEntry &r) {
         menuNow = true;   // no on-screen pad: tap anywhere = menu
       }
     }
-    if (bootPressed()) menuNow = true;
+    if (bootRaw()) menuNow = true;
     bool btSys = false;
     uint8_t btPad = btReadPad(&btSys);
     if (btSys) menuNow = true;
@@ -4637,7 +4718,28 @@ static bool azNeeded() { return (int)roms.size() > (SCR_H - 34) / BROWSER_ROW_H;
 static bool azStripOn() { return SCR_W > SCR_H && azNeeded(); }
 static bool azButtonOn() { return SCR_W <= SCR_H && azNeeded(); }
 static int browserY0() { return 34 + (azStripOn() ? AZ_STRIP_H : 0); }
-static int browserVisible() { return (SCR_H - browserY0()) / BROWSER_ROW_H; }
+// No touch screen and no controller yet: a pairing banner fills the bottom of the game list
+#define PAIR_BANNER_H 52
+static int pairBannerH() { return bootNavMode() ? PAIR_BANNER_H : 0; }
+static int browserVisible() { return (SCR_H - browserY0() - pairBannerH()) / BROWSER_ROW_H; }
+static void drawPairBanner() {
+  int h = pairBannerH();
+  if (!h) return;
+  int y = SCR_H - h;
+  lcd.fillRect(0, y, SCR_W, h, C_PANEL);
+  lcd.drawFastHLine(0, y, SCR_W, C_ACCENT);
+  lcd.setTextDatum(top_left);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_ACCENT, C_PANEL);
+  lcd.drawString("Pair a controller to play", 6, y + 3);
+  lcd.setFont(&fonts::Font0);
+  lcd.setTextColor(C_TEXT, C_PANEL);
+  lcd.drawString("PS4: SHARE+PS   PS5: CREATE+PS", 6, y + 21);
+  lcd.drawString("Xbox: pair button   Switch: sync", 6, y + 31);
+  lcd.setTextColor(C_DIM, C_PANEL);
+  lcd.drawString("BOOT: tap = down, hold = select", 6, y + 41);
+  lcd.setFont(&fonts::Font2);
+}
 static void azBuild() {
   azMask = 0;
   for (auto &e : roms) if (azEntry(e)) azMask |= 1u << azLetter(e.name);
@@ -4796,16 +4898,18 @@ static void drawBrowser() {
   glowOff(); marqueeOff(); browserMarq = -1;
   if (azStripOn()) azDrawStrip(-1);
   lcd.startWrite();
-  lcd.fillRect(0, y0, SCR_W, SCR_H - y0, C_BG);
+  const int y1 = SCR_H - pairBannerH();   // bottom of the list
+  lcd.fillRect(0, y0, SCR_W, y1 - y0, C_BG);
   int visible = browserVisible();
   for (int i = 0; i < visible; i++) drawBrowserRow(browserTop + i, browserTop + i == browserSel);
   // scrollbar
   if ((int)roms.size() > visible) {
-    int h = (SCR_H - y0) * visible / roms.size();
-    int y = y0 + (SCR_H - y0 - h) * browserTop / max(1, (int)roms.size() - visible);
-    lcd.fillRect(SCR_W - 3, y0, 3, SCR_H - y0, C_BG);
+    int h = (y1 - y0) * visible / roms.size();
+    int y = y0 + (y1 - y0 - h) * browserTop / max(1, (int)roms.size() - visible);
+    lcd.fillRect(SCR_W - 3, y0, 3, y1 - y0, C_BG);
     lcd.fillRect(SCR_W - 3, y, 3, h, C_ACCENT);
   }
+  drawPairBanner();
   lcd.endWrite();
 }
 
@@ -4994,9 +5098,11 @@ static int runBrowserLoop() {
     }
   }
   btNavReset();
+  bool bannerWas = pairBannerH() > 0;
 
   while (true) {
     int x, y;
+    if ((pairBannerH() > 0) != bannerWas) return -4;   // controller came or went: redraw
     // controller: d-pad moves, A/Start opens, B goes up a folder, Select opens Setup
     int ev = btNav();
     if (ev != NAV_NONE) browserByPad = true;
@@ -5008,6 +5114,9 @@ static int runBrowserLoop() {
       continue;
     }
     if (ev == NAV_BACK && sdOk && curDir != rootDir) return -5;
+#if TOUCH_KIND == TOUCH_NONE
+    if (ev == NAV_BACK) return -1;   // no touch: back at the top opens Setup (BOOT held 2 s)
+#endif
     if (!roms.empty() && sdOk && ev != NAV_NONE) {
       int n = (int)roms.size(), s0 = browserSel;
       if (ev == NAV_UP) browserSel = browserSel <= 0 ? n - 1 : browserSel - 1;
@@ -5126,7 +5235,8 @@ void setup() {
 
   loadSettings();
   // hold BOOT during power-up to reset display/touch settings
-  if (bootPressed()) { cfg = Settings(); saveSettings(); }
+  bool bootHeldAtStart = bootRaw();
+  if (bootHeldAtStart) { cfg = Settings(); saveSettings(); }
   applyTheme();
   ledInit();
 
@@ -5174,6 +5284,9 @@ void setup() {
   audioInit();
   musicInit();
   if (cfg.btEnabled) btInit();   // Bluetooth off: don't start it at all (frees its RAM)
+#if TOUCH_KIND == TOUCH_NONE
+  if (bootHeldAtStart) btForgetAll();   // BOOT held at power-up: also forget controllers
+#endif
   xTaskCreatePinnedToCore(displayTask, "disp", 3072, nullptr, 2, nullptr, 0);
 
   sdInit();

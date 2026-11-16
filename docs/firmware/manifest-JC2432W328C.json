@@ -1,0 +1,16 @@
+{
+  "name": "H@N-CYD-GBC for the JC2432W328C (2.8\", capacitive touch)",
+  "version": "2.16.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "HAN-CYD-GBC-JC2432W328C.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

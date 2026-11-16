@@ -2,7 +2,8 @@
 
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
-"CYD2USB", the 3.2" ESP32-2432S032C and ESP32-2432S032R, and the 3.5" ESP32-3248S035C and ESP32-3248S035R**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
+"CYD2USB", the 2.8" JC2432W328C, the 3.2" ESP32-2432S032C and ESP32-2432S032R, the 3.5" ESP32-3248S035C and
+ESP32-3248S035R, and the touch-less ESP32-2432S024N and ESP32-2432S032N**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
@@ -51,6 +52,9 @@ and a one-click web flasher.
 | **ESP32-2432S032C** | 3.2" ST7789 IPS, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-3248S035R** | 3.5" ST7796 320×480, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 | **ESP32-3248S035C** | 3.5" ST7796 320×480, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| **JC2432W328C** | 2.8" ST7789 IPS, CST820 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S024N** | 2.4" ILI9341, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S032N** | 3.2" ST7789 IPS, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 
 ✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
 
@@ -72,6 +76,24 @@ connector and an RGB LED, so every feature works on every board. They differ in 
 - **2.8":** **R** with one micro-USB port, the **CYD2USB** with two ports, or **C** (capacitive; its touch ribbon
   has 6 wires instead of 4).
 - **3.2" (ESP32-2432S032) and 3.5" (ESP32-3248S035):** again **C** = capacitive, **R** = resistive.
+- **N** (2.4" ESP32-2432S024N, 3.2" ESP32-2432S032N) = **no touch screen**. These builds are played with a Bluetooth
+  controller; see [Boards with no touch screen](#boards-with-no-touch-screen).
+- **JC2432W328C:** a 2.8" capacitive board from another maker (Guition), wired like the 2.4" C but with an ST7789
+  IPS screen. It asks for a touch calibration on first start.
+
+### Boards with no touch screen
+
+The **N** builds (ESP32-2432S024N, ESP32-2432S032N) start in landscape and are made for a Bluetooth controller.
+1. Flash the board and power it on. While no controller is connected, the bottom of the game list shows how to
+   pair, and the board is already listening for one.
+2. Put the controller in pairing mode (PS4: SHARE + PS; PS5: CREATE + PS; Xbox: pair button; Switch Pro: sync
+   button). It connects in a few seconds and reconnects by itself from then on.
+
+Until a controller connects, the **BOOT** button works the menus: **tap** = down, **hold and let go** = select,
+**hold 2 s** = back (on the game list's top level, that opens Setup). Once a controller is connected, BOOT goes back
+to its usual jobs. The Bluetooth on/off switch, the touch items and the on-screen buttons are left out of these
+builds, so you can't lock yourself out. Holding BOOT while powering on resets the settings and forgets all paired
+controllers.
 
 ### Testing the new builds (everything but the 2.4" C)
 
@@ -160,7 +182,8 @@ Steps:
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
 
    On any **other board**, use the build with its model number: **ESP32-2432S024R**, **ESP32-2432S028R** (one USB
-   port), **CYD2USB** (two USB ports), **ESP32-2432S028C**, **ESP32-2432S032R / C** or **ESP32-3248S035R / C**.
+   port), **CYD2USB** (two USB ports), **ESP32-2432S028C**, **JC2432W328C**, **ESP32-2432S032R / C / N**,
+   **ESP32-2432S024N** or **ESP32-3248S035R / C**.
    Each has touch and Bluetooth, and 2.8 MB for games.
    See [Testing the new builds](#testing-the-new-builds-everything-but-the-24-c).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
@@ -215,6 +238,10 @@ esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032R.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032C.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-3248S035R.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-3248S035C.bin
+# JC2432W328C (2.8" capacitive) and the no-touch ESP32-2432S024N / ESP32-2432S032N:
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-JC2432W328C.bin
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S024N.bin
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032N.bin
 ```
 
 ### Option 3: Espressif's online tool
@@ -612,7 +639,8 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
    - For another board, define one of `BOARD_024R`, `BOARD_028R`, `BOARD_CYD2USB`, `BOARD_028C`, `BOARD_032R`,
-     `BOARD_032C`, `BOARD_035R` or `BOARD_035C`. Either
+     `BOARD_032C`, `BOARD_035R`, `BOARD_035C`, `BOARD_W328C`, `BOARD_024N` or `BOARD_032N` (the last two need the
+     Bluetooth build). Either
      uncomment the line near the top of `src/main.cpp`, or with arduino-cli add
      `--build-property compiler.cpp.extra_flags=-DBOARD_028R` (for example). Use the Bluetooth partition layout.
 4. To make a single merged image like the ones in `docs/firmware`:
@@ -632,7 +660,7 @@ Project layout:
 | `src/music/` | The menu tunes as note data (generated by `tools/music/gen_tunes.py`) |
 | `src/bt_slim/` | Slimmed Bluetooth library files (Bluetooth build) |
 | `docs/` | Web flasher and "Send games" page (`send.js`), firmware images, cheat pack, README images |
-| `tools/` | Host tests (`usbtest` for USB transfers, `touchtest` for touch calibration, `histtest`), logo, music and cheat-pack generators |
+| `tools/` | Host tests (`usbtest` for USB transfers, `touchtest` for touch calibration, `bootnavtest` for the BOOT-button menus, `histtest`), logo, music and cheat-pack generators |
 
 ---
 

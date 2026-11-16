@@ -1,0 +1,16 @@
+{
+  "name": "H@N-CYD-GBC for the ESP32-2432S032N (3.2\", no touch, Bluetooth controller)",
+  "version": "2.16.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "HAN-CYD-GBC-2432S032N.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
