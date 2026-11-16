@@ -1,15 +1,16 @@
 # H@N-CYD-GBC
 
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
-the ESP32-2432S024C (2.4") and, new, the ESP32-2432S028R (2.8")**, with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
+the ESP32-2432S024C (2.4") and, new, both 2.8" boards: the ESP32-2432S028R and the two-USB "CYD2USB"**,
+with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
 
 > [!WARNING]
 > **Use the build for your exact board** (see [Supported boards](#supported-boards)). Other "CYD"
-> boards (ESP32-S3 boards, the 3.5" ESP32-3248S035, the 2.8" "CYD2USB" with two USB ports...) use
-> different chips, screens or pins. The firmware won't work on them and will most likely show a
+> boards (ESP32-S3 boards, the 3.5" ESP32-3248S035, capacitive 2.8" boards...) use different chips,
+> screens or pins. The firmware won't work on them and will most likely show a
 > blank screen.
 
 **Flash it from your browser:** <https://hackatnight.com/HAN-CYD-GBC/>
@@ -41,7 +42,8 @@ and a one-click web flasher.
 | Board | Screen / touch | Status | Builds |
 |---|---|---|---|
 | **ESP32-2432S024C** | 2.4" ILI9341, CST820 **capacitive** touch | Main board, tested daily | Bluetooth (PS4), Touch-only |
-| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 **resistive** touch (the original "Cheap Yellow Display") | **New in 2.11.0: needs testers** | Bluetooth (PS4) with touch |
+| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 **resistive** touch, one micro-USB port (the original "Cheap Yellow Display") | **New in 2.11.0: needs testers** | Bluetooth (PS4) with touch |
+| **ESP32-2432S028 "CYD2USB"** | Same 2.8" board with **two USB ports** (micro-USB + USB-C), usually an ST7789 screen | **New in 2.12.0: needs testers** | Bluetooth (PS4) with touch |
 
 Both are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM) with a microSD slot, a speaker connector
 and an RGB LED, so every feature works on both. The 2.8" board differs only in its backlight pin and its touch chip.
@@ -67,7 +69,17 @@ What to expect:
    landscape.
 3. Everything else (SD card, sound, LED, USB transfer, cheats, saves) is the same as on the 2.4" board.
 
-Not supported yet: the 2.8" variant with two USB ports ("CYD2USB"), which uses an ST7789 screen chip instead.
+**Which 2.8" build?** Count the USB ports.
+- **One** micro-USB port: the **ESP32-2432S028R** build.
+- **Two** ports (micro-USB and USB-C): the **CYD2USB** build.
+
+The two-USB board is the same board with a different screen chip on most units: an ST7789 instead of an ILI9341,
+with colors that come out inverted. Not every unit is the same, so both 2.8" builds have a
+**Setup → Display & touch → Screen chip** switch (ILI9341 / ST7789).
+- If the colors look wrong, washed out or like a photo negative, flip **Screen chip** and **Invert colors**
+  until the picture looks right. Everything else is identical.
+- The CYD2USB build starts with ST7789 and inverted colors; the S028R build starts with ILI9341, no inversion.
+- Holding **BOOT** while powering on puts those defaults back.
 
 ---
 
@@ -108,7 +120,8 @@ Steps:
    - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
 
-   On the **ESP32-2432S028R**, use the **2.8" build** (touch and Bluetooth, 2.9 MB for games). See
+   On a **2.8" board**, use the 2.8" build that matches your USB ports: one port = **ESP32-2432S028R**, two ports =
+   **CYD2USB** (touch and Bluetooth, 2.9 MB for games). See
    [Testing the 2.8" build](#testing-the-28-esp32-2432s028r-build).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
@@ -149,8 +162,10 @@ pip install esptool
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-BT.bin
 # or
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-touch.bin
-# ESP32-2432S028R (2.8"):
+# ESP32-2432S028R (2.8", one USB port):
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028R.bin
+# 2.8" with two USB ports (CYD2USB):
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028-2USB.bin
 ```
 
 ### Option 3: Espressif's online tool
@@ -507,7 +522,8 @@ licensed games.
 
 | Problem | Try this |
 |---|---|
-| Blank or white screen after flashing | Make sure you flashed the build for your exact board: ESP32-2432S024C (2.4", capacitive) or ESP32-2432S028R (2.8", resistive, one USB port). Other CYD boards aren't supported. |
+| Blank or white screen after flashing | Make sure you flashed the build for your exact board: ESP32-2432S024C (2.4", capacitive), ESP32-2432S028R (2.8", one USB port) or CYD2USB (2.8", two USB ports). Other CYD boards aren't supported. |
+| 2.8" board: colors inverted or washed out | *Setup → Display & touch → Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
 | 2.8" board: taps land in the wrong place | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
@@ -535,9 +551,10 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - `partitions.csv` (Bluetooth layout) is picked up automatically.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
-   - For the **ESP32-2432S028R**, also define `BOARD_028R`: uncomment `// #define BOARD_028R` near the top of
-     `src/main.cpp`, or with arduino-cli add `--build-property compiler.cpp.extra_flags=-DBOARD_028R`. Use the
-     Bluetooth partition layout.
+   - For the **ESP32-2432S028R**, also define `BOARD_028R`. For the two-USB **CYD2USB**, define `BOARD_CYD2USB`
+     instead. Either uncomment the line near the top of `src/main.cpp`, or with arduino-cli add
+     `--build-property compiler.cpp.extra_flags=-DBOARD_028R` (or `-DBOARD_CYD2USB`). Use the Bluetooth partition
+     layout.
 4. To make a single merged image like the ones in `docs/firmware`:
    ```sh
    esptool.py --chip esp32 merge_bin -o merged.bin --flash_mode dio --flash_freq 80m --flash_size 4MB \

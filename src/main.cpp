@@ -43,13 +43,31 @@
 // BOARD_028R: uncomment the next line, or with arduino-cli add
 //   --build-property compiler.cpp.extra_flags=-DBOARD_028R
 // ----------------------------------------------------------------------------
+// The 2.8" board with two USB ports (micro-USB + USB-C, "CYD2USB") is the same board with
+// a different screen chip on most units (ST7789 instead of ILI9341) whose colors come out
+// inverted: define BOARD_CYD2USB (it implies BOARD_028R).
 // #define BOARD_028R
-#ifdef BOARD_028R
+// #define BOARD_CYD2USB
+#ifdef BOARD_CYD2USB
+#ifndef BOARD_028R
+#define BOARD_028R
+#endif
+#define BOARD_NAME "ESP32-2432S028-2USB"
+#define DEFAULT_PANEL 1    // ST7789
+#define DEFAULT_INVERT 1
+#elif defined(BOARD_028R)
 #define BOARD_NAME "ESP32-2432S028R"
-#define TOUCH_RESISTIVE 1
 #else
 #define BOARD_NAME "ESP32-2432S024C"
+#endif
+#ifdef BOARD_028R
+#define TOUCH_RESISTIVE 1
+#else
 #define TOUCH_RESISTIVE 0
+#endif
+#ifndef DEFAULT_PANEL
+#define DEFAULT_PANEL 0    // ILI9341
+#define DEFAULT_INVERT 0
 #endif
 
 // Default orientation. LovyanGFX rotation 2 = portrait, confirmed correct on the
@@ -92,7 +110,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.11.0"
+#define APP_VERSION "2.12.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -112,6 +130,9 @@ static int SCR_H = 320;
 class LGFX : public lgfx::LGFX_Device {
 public:
   lgfx::Panel_ILI9341 panel;
+#ifdef BOARD_028R
+  lgfx::Panel_ST7789 panel2;   // 2.8" boards: many (all "CYD2USB") use this chip instead
+#endif
   lgfx::Bus_SPI bus;
   lgfx::Light_PWM light;
 #ifdef BOARD_028R
@@ -135,10 +156,10 @@ public:
       c.pin_miso = PIN_LCD_MISO;
       c.pin_dc = PIN_LCD_DC;
       bus.config(c);
-      panel.setBus(&bus);
     }
-    {
-      auto c = panel.config();
+    auto setupPanel = [&](lgfx::Panel_Device &p) {
+      p.setBus(&bus);
+      auto c = p.config();
       c.pin_cs = PIN_LCD_CS;
       c.pin_rst = -1;
       c.pin_busy = -1;
@@ -152,8 +173,10 @@ public:
       c.rgb_order = false;
       c.dlen_16bit = false;
       c.bus_shared = false;
-      panel.config(c);
-    }
+      p.config(c);
+      p.setLight(&light);
+      p.setTouch(&touch);
+    };
     {
       auto c = light.config();
       c.pin_bl = PIN_LCD_BL;
@@ -161,7 +184,6 @@ public:
       c.freq = 12000;
       c.pwm_channel = 7;
       light.config(c);
-      panel.setLight(&light);
     }
 #ifdef BOARD_028R
     {
@@ -179,7 +201,6 @@ public:
       c.pin_miso = PIN_TP_MISO;
       c.pin_cs = PIN_TP_CS;
       touch.config(c);
-      panel.setTouch(&touch);
     }
 #else
     {
@@ -196,12 +217,27 @@ public:
       c.pin_scl = PIN_TP_SCL;
       c.freq = 400000;
       touch.config(c);
-      panel.setTouch(&touch);
     }
+#endif
+    setupPanel(panel);
+#ifdef BOARD_028R
+    setupPanel(panel2);
 #endif
     setPanel(&panel);
   }
-  void setRgbOrder(bool rgb) { auto c = panel.config(); c.rgb_order = rgb; panel.config(c); }
+  // 0 = ILI9341, 1 = ST7789 (2.8" boards only); takes effect at the next init()
+  void selectPanel(int t) {
+#ifdef BOARD_028R
+    if (t) { setPanel(&panel2); return; }
+#endif
+    setPanel(&panel);
+  }
+  void setRgbOrder(bool rgb) {
+    auto c = panel.config(); c.rgb_order = rgb; panel.config(c);
+#ifdef BOARD_028R
+    auto d = panel2.config(); d.rgb_order = rgb; panel2.config(d);
+#endif
+  }
 };
 
 static LGFX lcd;
@@ -218,7 +254,8 @@ struct Settings {
   uint8_t rotation = DEFAULT_ROTATION;   // LovyanGFX rotation 0..3
   uint8_t touchPad = 0;    // on-screen controls: 0 = auto (hide with a controller), 1 = always, 2 = never
   uint8_t mirrorFix = 0;   // drop the X mirror if the image is mirrored
-  uint8_t invert = 0;
+  uint8_t invert = DEFAULT_INVERT;
+  uint8_t panelType = DEFAULT_PANEL;   // screen chip on 2.8" boards: 0 = ILI9341, 1 = ST7789
   uint8_t swapRB = 0;
   uint8_t touchFlipX = 0;
   uint8_t touchFlipY = 0;
@@ -257,6 +294,7 @@ static void loadSettings() {
   cfg.touchPad = prefs.getUChar("tpad", cfg.touchPad);
   cfg.mirrorFix = prefs.getUChar("mirr", cfg.mirrorFix);
   cfg.invert = prefs.getUChar("inv", cfg.invert);
+  cfg.panelType = prefs.getUChar("pnl", cfg.panelType) & 1;
   cfg.swapRB = prefs.getUChar("rgb", cfg.swapRB);
   cfg.touchFlipX = prefs.getUChar("tfx", cfg.touchFlipX);
   cfg.touchFlipY = prefs.getUChar("tfy", cfg.touchFlipY);
@@ -295,6 +333,7 @@ static void saveSettings() {
   prefs.putUChar("tpad", cfg.touchPad);
   prefs.putUChar("mirr", cfg.mirrorFix);
   prefs.putUChar("inv", cfg.invert);
+  prefs.putUChar("pnl", cfg.panelType);
   prefs.putUChar("rgb", cfg.swapRB);
   prefs.putUChar("tfx", cfg.touchFlipX);
   prefs.putUChar("tfy", cfg.touchFlipY);
@@ -328,6 +367,7 @@ static uint8_t &curScale() { return (cfg.rotation & 1) ? cfg.scaleLand : cfg.sca
 
 static void applyDisplaySettings(bool reinit) {
   if (reinit) {
+    lcd.selectPanel(cfg.panelType);
     lcd.setRgbOrder(cfg.swapRB);
     lcd.init();
   }
@@ -2753,6 +2793,9 @@ static void displayTouchMenu() {
       { "Mirror fix", cfg.mirrorFix ? "On" : "Off" },
       { "Invert colors", cfg.invert ? "On" : "Off" },
       { "Swap red/blue", cfg.swapRB ? "On" : "Off" },
+#ifdef BOARD_028R
+      { "Screen chip", cfg.panelType ? "ST7789" : "ILI9341" },   // if the colors or picture look wrong
+#endif
     };
     static int selDT = -1;
     int i = runList("Display & touch", "Back", it, &selDT);
@@ -2771,6 +2814,7 @@ static void displayTouchMenu() {
       case 5: cfg.mirrorFix ^= 1; break;
       case 6: cfg.invert ^= 1; break;
       case 7: cfg.swapRB ^= 1; reinit = true; break;
+      case 8: cfg.panelType ^= 1; reinit = true; break;
     }
     applyDisplaySettings(reinit);
     saveSettings();
@@ -4883,6 +4927,7 @@ void setup() {
   applyTheme();
   ledInit();
 
+  lcd.selectPanel(cfg.panelType);
   lcd.setRgbOrder(cfg.swapRB);
   lcd.init();
   applyDisplaySettings(false);

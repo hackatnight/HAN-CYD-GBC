@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>H@N-CYD-GBC web flasher: Game Boy, GBC and NES for the ESP32-2432S024C and ESP32-2432S028R (CYD)</title>
+<title>H@N-CYD-GBC web flasher: Game Boy, GBC and NES for the ESP32-2432S024C, ESP32-2432S028R and CYD2USB</title>
 <meta name="description" content="Flash the H@N-CYD-GBC Game Boy, Game Boy Color and NES emulator to an ESP32-2432S024C or ESP32-2432S028R Cheap Yellow Display (CYD) from your browser.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 <style>
@@ -61,16 +61,17 @@
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.11.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.12.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
 
   <div class="warn">
     <strong>Pick the build for your exact board.</strong> The ESP32-2432S024C (2.4", capacitive touch) is the
-    main, tested board. The ESP32-2432S028R (2.8", resistive touch, the original CYD) build is new and needs
-    testers. The 2.8" version with <em>two</em> USB ports (often sold as "CYD2USB") uses a different screen chip
-    and isn't supported yet. Other boards won't work. Flashing replaces whatever is on the board now.
+    main, tested board. The two 2.8" builds are new and need testers: one for the ESP32-2432S028R with
+    <em>one</em> micro-USB port (the original CYD), one for the 2.8" board with <em>two</em> USB ports (micro-USB
+    and USB-C, often sold as "CYD2USB"). Count the USB ports to pick. Other boards won't work. Flashing replaces
+    whatever is on the board now.
   </div>
 
   <div class="builds">
@@ -104,14 +105,28 @@
     </div>
     <div class="card">
       <h2>2.8" CYD <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028R (2.8", resistive)</p>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028R (2.8", one USB port)</p>
       <ul>
         <li>Touch + PS4 Bluetooth, starts in portrait</li>
         <li>Asks you to calibrate the touch screen on first start</li>
         <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
       </ul>
       <esp-web-install-button manifest="firmware/manifest-2432S028R.json">
-        <button slot="activate">Install 2.8" build</button>
+        <button slot="activate">Install 2.8" (1 USB) build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>2.8" CYD2USB <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028 with two USB ports (micro-USB + USB-C)</p>
+      <ul>
+        <li>Touch + PS4 Bluetooth, starts in portrait</li>
+        <li>Wrong colors? <em>Setup → Display &amp; touch → Screen chip</em></li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-2432S028-2USB.json">
+        <button slot="activate">Install 2.8" (2 USB) build</button>
         <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
         <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
       </esp-web-install-button>
