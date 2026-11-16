@@ -656,7 +656,9 @@ void gb_cheat_poke(int bank, unsigned addr, int v)
 	}
 	else if (addr >= 0xA000 && addr < 0xC000 && ram.spages > 0)
 	{
-		int p = ((mbc.rambank < mbc.ramsize ? mbc.rambank : 0) << 1) | ((addr >> 12) & 1);
+		/* bank 0x80-0x8F: that cartridge RAM bank (GameShark 80-8F), else the one in use */
+		int rb = (bank & 0x80) && bank != 0xFF ? (bank & 0x0F) : mbc.rambank;
+		int p = ((rb < mbc.ramsize ? rb : 0) << 1) | ((addr >> 12) & 1);
 		if (p < ram.spages)
 		{
 			byte *pg = ram.spage[p] ? ram.spage[p] : gb_sram_fault(p);

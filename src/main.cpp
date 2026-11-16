@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.5.0"
+#define APP_VERSION "2.5.1"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -2174,7 +2174,8 @@ static void settingsMenu() {
 // Cheats: a small memory changer. A cheat keeps game-memory addresses at fixed
 // values, written once per frame (infinite lives, health, money, time...). Codes come
 // from a RetroArch-style .cht file on the SD card or from the built-in cheat finder.
-//   Game Boy / GBC: GameShark "ttVVLLHH" (tt = 01, or 90-97 for a GBC work RAM bank),
+//   Game Boy / GBC: GameShark "ttVVLLHH" (tt = 01, 80-8F cartridge RAM bank, 90-97 GBC
+//                   work RAM bank),
 //                   or "AAAA=VV"
 //   NES:            Pro Action Replay "AAAA:VV", "AAAAVV" or "00AAAAVV"
 // Game Genie codes patch the ROM instead; they're listed but can't be switched on.
@@ -2224,7 +2225,8 @@ static bool parseCheat(Cheat &ch, bool nes) {
       int tt = hexAt(part, 0, 2);
       cc.val = (uint8_t)hexAt(part, 2, 2);
       cc.addr = (uint16_t)(hexAt(part, 6, 2) << 8 | hexAt(part, 4, 2));
-      if (tt >= 0x90 && tt <= 0x97) cc.bank = tt & 7;
+      if (tt >= 0x90 && tt <= 0x97) cc.bank = tt & 7;                  // GBC work RAM bank
+      else if (tt >= 0x80 && tt <= 0x8F) cc.bank = 0x80 | (tt & 0x0F);  // cartridge RAM bank
     } else if (nes && part.length() == 6) {                // AAAAVV
       cc.addr = (uint16_t)hexAt(part, 0, 4);
       cc.val = (uint8_t)hexAt(part, 4, 2);
@@ -2250,10 +2252,50 @@ static String unquote(String v) {
   return v;
 }
 
+// "Super Mario Land 2 - 6 Golden Coins (USA, Europe) [!]" -> "supermarioland26goldencoins"
+static String normName(const char *n) {
+  String o;
+  int depth = 0;
+  for (const char *p = n; *p; p++) {
+    char c = *p;
+    if (c == '(' || c == '[') depth++;
+    else if ((c == ')' || c == ']') && depth) depth--;
+    else if (!depth && isalnum((unsigned char)c)) o += (char)tolower((unsigned char)c);
+  }
+  return o;
+}
+
+// Cheat files use the standard (No-Intro) game names, which may not match the ROM's file
+// name. Exact name first; then the same name ignoring (region) [tags], case and punctuation;
+// then a single file whose name starts like the ROM's ("Super Mario Land 2" ->
+// "Super Mario Land 2 - 6 Golden Coins (USA, Europe)").
+static String findCheatFile(const String &dir, const String &base) {
+  String exact = dir + base + ".cht";
+  if (SD.exists(exact)) return exact;
+  String want = normName(base.c_str());
+  if (want.length() < 4) return exact;
+  File d = SD.open(dir.substring(0, dir.length() - 1));
+  if (!d) return exact;
+  String prefixHit;
+  int prefixCount = 0;
+  while (true) {
+    bool isDir = false;
+    String n = d.getNextFileName(&isDir);
+    if (!n.length()) break;
+    if (isDir || !n.endsWith(".cht")) continue;
+    String fn = n.substring(n.lastIndexOf('/') + 1);
+    String got = normName(fn.substring(0, fn.length() - 4).c_str());
+    if (got == want) { d.close(); return dir + fn; }
+    if (want.length() >= 8 && got.startsWith(want)) { prefixHit = dir + fn; prefixCount++; }
+  }
+  d.close();
+  return prefixCount == 1 ? prefixHit : exact;
+}
+
 static void cheatsLoad(bool nes, const String &base) {
   cheats.clear();
   cheatsDirty = false;
-  cheatPath = (nes ? "/gbc/cheats/nes/" : "/gbc/cheats/") + base + ".cht";
+  cheatPath = findCheatFile(nes ? "/gbc/cheats/nes/" : "/gbc/cheats/", base);
   File f = SD.open(cheatPath, FILE_READ);
   if (f) {
     while (f.available()) {
