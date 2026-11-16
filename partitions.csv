@@ -1,5 +1,6 @@
 # Name,   Type, SubType, Offset,   Size,     Flags
-# Bluetooth build (also fine for touch-only): 1 MB app, 2.94 MB for ROMs
+# Bluetooth build: 1.125 MB app (Bluetooth Classic + BLE controllers), 2.81 MB for games
+# (a game bigger than that keeps its least-used parts on the SD card)
 nvs,      data, nvs,     0x9000,   0x5000,
-app0,     app,  factory, 0x10000,  0x100000,
-rom,      data, 0x40,    0x110000, 0x2F0000,
+app0,     app,  factory, 0x10000,  0x120000,
+rom,      data, 0x40,    0x130000, 0x2D0000,

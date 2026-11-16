@@ -183,7 +183,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.14.0"
+#define APP_VERSION "2.15.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -538,7 +538,8 @@ static const char *DMG_PALETTE_NAMES[] = { "GB green", "Gray", "Pocket", "Warm",
 
 
 // ----------------------------------------------------------------------------
-// Bluetooth controllers (Bluepad32): PS4, Stadia (BT mode), Xbox, Switch, 8BitDo...
+// Bluetooth controllers (Bluepad32): PS4, PS5 (DualSense), Switch Pro / Joy-Con, 8BitDo
+// (classic Bluetooth); Xbox Wireless, Stadia, 8BitDo and Android pads (BLE)
 // ----------------------------------------------------------------------------
 #define GBP_RIGHT  0x01
 #define GBP_LEFT   0x02
@@ -560,7 +561,7 @@ static int btCount() {
   return n;
 }
 
-// Scanning lets new controllers pair and BLE pads (Stadia) reconnect.
+// Scanning lets new controllers pair and BLE pads (Xbox, Stadia) reconnect.
 // Stop it while a controller is connected to keep the radio/CPU quiet.
 static void btUpdateScanning() {
   if (!btReady) return;
@@ -591,7 +592,7 @@ static void btInit() {
 
 static inline void btPoll() { if (btReady) BP32.update(); }
 
-// Returns Game Boy pad bits; *system = PS / Stadia button held
+// Returns Game Boy pad bits; *system = PS / Xbox / Home button held
 static uint8_t btReadPad(bool *system) {
   uint8_t pad = 0;
   bool sys = false;
@@ -2987,12 +2988,12 @@ static void pairScreen() {
   lcd.setTextColor(C_TEXT, C_BG);
   int y = 44;
   auto line = [&](const char *t, uint16_t c = C_TEXT) { lcd.setTextColor(c, C_BG); lcd.drawString(t, 8, y); y += 19; };
-  line("PS4:", C_ACCENT);
-  line("Hold SHARE + PS until the light");
-  line("bar flashes quickly.");
-  y += 6;
-  line("Other controllers: use the", C_DIM);
-  line("controller's own pairing mode.", C_DIM);
+  line("Put the controller in pairing mode:", C_ACCENT);
+  line("PS4: hold SHARE + PS");
+  line("PS5: hold CREATE + PS");
+  line("Xbox: hold the pair button");
+  line("Switch: hold the sync button");
+  line("Others: see the manual", C_DIM);
   uint32_t t0 = millis();
   bool done = false;
   btNavReset();

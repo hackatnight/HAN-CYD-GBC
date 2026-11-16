@@ -1,9 +1,10 @@
 /*
  * CYD-GBC memory slimming (Bluetooth build only).
  * One controller slot instead of 4 (saves ~17.5 KB of RAM).
- * PS4 (DualShock 4) controllers only: the other controller drivers and the 8 KB
- * controller ID table are no longer linked in (~38 KB of flash). Any other
- * controller falls back to the small generic HID driver.
+ * Controllers: PS4, PS5 (DualSense), Xbox Wireless, Switch Pro / Joy-Con, 8BitDo,
+ * Stadia and other Android-style pads. Bluepad32's 8 KB controller ID table and the
+ * drivers for older or rarer devices (Wii, DS3, PS Move, Steam, iCade, mice,
+ * keyboards...) aren't linked in. Anything unknown uses the Android profile.
  * Copied from Bluepad32 4.1.0 src/components/bluepad32/uni_hid_device.c and modified as noted.
  * Because this file defines every symbol of the original, the linker uses it
  * instead of the precompiled copy in the Bluepad32 board package.
@@ -29,8 +30,14 @@
 #include "bt/uni_bt_le.h"
 #include "bt/uni_bt_service.h"
 #include "controller/uni_controller_type.h"
+#include "parser/uni_hid_parser_8bitdo.h"
+#include "parser/uni_hid_parser_android.h"
 #include "parser/uni_hid_parser_ds4.h"
+#include "parser/uni_hid_parser_ds5.h"
 #include "parser/uni_hid_parser_generic.h"
+#include "parser/uni_hid_parser_stadia.h"
+#include "parser/uni_hid_parser_switch.h"
+#include "parser/uni_hid_parser_xboxone.h"
 #include "platform/uni_platform.h"
 #include "uni_common.h"
 #include "uni_config.h"
@@ -559,53 +566,152 @@ void uni_hid_device_dump_all(void) {
 }
 
 bool uni_hid_device_guess_controller_type_from_name(uni_hid_device_t* d, const char* name) {
-    /* CYD: PS4 only. DS3 / Switch name matching removed. */
-    (void)d;
-    (void)name;
+    if (!name)
+        return false;
+    /* CYD: Switch name matching kept (Switch Pro / Joy-Con); DS3 removed. Xbox is matched
+     * later, after the HID descriptor, as in Bluepad32. */
+    bool ret = uni_hid_parser_switch_does_name_match(d, name);
+    if (ret)
+        uni_hid_device_guess_controller_type_from_pid_vid(d);
+    return ret;
+}
+
+/* CYD: a short list instead of Bluepad32's 8 KB table. VID << 16 | PID, from Bluepad32's
+ * controller list (Xbox: Microsoft's own IDs only; clones are matched by name below). */
+static const uint32_t cyd_ds4_ids[] = {
+    0x0079181b, 0x044fd00e, 0x054c05c4, 0x054c05c5, 0x054c09cc, 0x054c0ba0,
+    0x07388250, 0x07388384, 0x07388480, 0x07388481, 0x0c120e10, 0x0c120e13,
+    0x0c120e15, 0x0c120e20, 0x0c120ef6, 0x0c121cf6, 0x0c121e10, 0x0e6f0203,
+    0x0e6f0207, 0x0e6f020a, 0x0f0d0055, 0x0f0d005e, 0x0f0d0066, 0x0f0d0084,
+    0x0f0d0087, 0x0f0d008a, 0x0f0d009c, 0x0f0d00a0, 0x0f0d00ee, 0x0f0d011c,
+    0x0f0d0123, 0x0f0d0162, 0x11c04001, 0x146b0d01, 0x146b0d02, 0x146b0d06,
+    0x146b0d08, 0x146b0d09, 0x146b0d10, 0x146b0d13, 0x146b1103,
+    0x15320401, 0x15321000, 0x15321004, 0x15321007, 0x15321008, 0x15321009,
+    0x1532100a, 0x15321100, 0x20d6792a, 0x2c222000, 0x2c222300, 0x2c222500,
+    0x32850d16, 0x32850d17, 0x75450104, 0x98860025,
+};
+static const uint32_t cyd_ds5_ids[] = {
+    0x054c0ce6, 0x054c0df2, 0x054c0e5f, 0x0e6f0209, 0x0f0d0163, 0x0f0d0184,
+    0x1532100b, 0x1532100c, 0x32850d18, 0x32850d19, 0x358a0104,
+};
+static const uint32_t cyd_xbox_ids[] = {
+    0x045e02d1, 0x045e02dd, 0x045e02e0, 0x045e02e3, 0x045e02ea, 0x045e02fd,
+    0x045e02ff, 0x045e0b00, 0x045e0b05, 0x045e0b0a, 0x045e0b0c, 0x045e0b12,
+    0x045e0b13, 0x045e0b20, 0x045e0b21, 0x045e0b22, 0x045e0867,
+};
+static const uint32_t cyd_switch_ids[] = {
+    0x057e2009, 0x0f0d00f6, 0x0e6f0186, 0x057e2017, 0x057e2019, 0x057e201e,
+};
+static const uint32_t cyd_8bitdo_ids[] = {
+    0x28200009, 0x2dc80651, 0x2dc82830, 0x2dc82840, 0x2dc83230, 0x2dc86006,
+    0x2dc86100, 0x2dc86101,
+};
+static const uint32_t cyd_android_ids[] = {   // includes the Stadia controller
+    0x20d66271, 0x0b054500, 0x19490402, 0x18d19400, 0x01111431,
+};
+static bool cyd_in(const uint32_t* list, size_t n, uint32_t id) {
+    for (size_t i = 0; i < n; i++)
+        if (list[i] == id)
+            return true;
     return false;
 }
+#define CYD_IN(list, id) cyd_in(list, sizeof(list) / sizeof(list[0]), id)
 
 void uni_hid_device_guess_controller_type_from_pid_vid(uni_hid_device_t* d) {
     if (uni_hid_device_has_controller_type(d)) {
         logi("device already has a controller type");
         return;
     }
-    /* CYD: PS4 only. DualShock 4 VID/PIDs taken from Bluepad32's controller list. */
-    static const uint32_t ds4_ids[] = {
-        0x0079181b, 0x044fd00e, 0x054c05c4, 0x054c05c5, 0x054c09cc, 0x054c0ba0,
-        0x07388250, 0x07388384, 0x07388480, 0x07388481, 0x0c120e10, 0x0c120e13,
-        0x0c120e15, 0x0c120e20, 0x0c120ef6, 0x0c121cf6, 0x0c121e10, 0x0e6f0203,
-        0x0e6f0207, 0x0e6f020a, 0x0f0d0055, 0x0f0d005e, 0x0f0d0066, 0x0f0d0084,
-        0x0f0d0087, 0x0f0d008a, 0x0f0d009c, 0x0f0d00a0, 0x0f0d00ee, 0x0f0d011c,
-        0x0f0d0123, 0x0f0d0162, 0x11c04001, 0x146b0d01, 0x146b0d02, 0x146b0d06,
-        0x146b0d08, 0x146b0d09, 0x146b0d10, 0x146b0d10, 0x146b0d13, 0x146b1103,
-        0x15320401, 0x15321000, 0x15321004, 0x15321007, 0x15321008, 0x15321009,
-        0x1532100a, 0x15321100, 0x20d6792a, 0x2c222000, 0x2c222300, 0x2c222500,
-        0x32850d16, 0x32850d17, 0x75450104, 0x98860025,
-    };
+    /* CYD: PS4, PS5, Xbox, Switch Pro / Joy-Con, 8BitDo, Android / Stadia; anything else uses
+     * the Android profile (as Bluepad32 does), so most other HID gamepads still work. */
     uint32_t id = ((uint32_t)d->vendor_id << 16) | d->product_id;
-    uni_controller_type_t type = CONTROLLER_TYPE_GenericController;
-    for (size_t i = 0; i < sizeof(ds4_ids) / sizeof(ds4_ids[0]); i++)
-        if (ds4_ids[i] == id) { type = CONTROLLER_TYPE_PS4Controller; break; }
+    uni_controller_type_t type;
+    if (CYD_IN(cyd_ds4_ids, id))
+        type = CONTROLLER_TYPE_PS4Controller;
+    else if (CYD_IN(cyd_ds5_ids, id))
+        type = CONTROLLER_TYPE_PS5Controller;
+    else if (CYD_IN(cyd_xbox_ids, id))
+        type = CONTROLLER_TYPE_XBoxOneController;
+    else if (CYD_IN(cyd_switch_ids, id))
+        type = CONTROLLER_TYPE_SwitchProController;
+    else if (id == 0x057e2006)
+        type = CONTROLLER_TYPE_SwitchJoyConLeft;
+    else if (id == 0x057e2007)
+        type = CONTROLLER_TYPE_SwitchJoyConRight;
+    else if (CYD_IN(cyd_8bitdo_ids, id))
+        type = CONTROLLER_TYPE_8BitdoController;
+    else if (CYD_IN(cyd_android_ids, id))
+        type = CONTROLLER_TYPE_AndroidController;
+    else if (uni_hid_parser_xboxone_does_name_match(d, d->name))
+        type = CONTROLLER_TYPE_XBoxOneController;   // Xbox clones (GameSir T3s...)
+    else {
+        logi("Device 0x%04x:0x%04x not in the list. Using the Android profile.\n", d->vendor_id, d->product_id);
+        type = CONTROLLER_TYPE_AndroidController;
+    }
 
     // Subtype is still unknown, it will be set by the relevant parse_input_report() func
     d->controller_subtype = CONTROLLER_SUBTYPE_NONE;
 
     memset(&d->report_parser, 0, sizeof(d->report_parser));
 
-    if (type == CONTROLLER_TYPE_PS4Controller) {
-        d->report_parser.setup = uni_hid_parser_ds4_setup;
-        d->report_parser.init_report = uni_hid_parser_ds4_init_report;
-        d->report_parser.parse_input_report = uni_hid_parser_ds4_parse_input_report;
-        d->report_parser.parse_feature_report = uni_hid_parser_ds4_parse_feature_report;
-        d->report_parser.set_lightbar_color = uni_hid_parser_ds4_set_lightbar_color;
-        d->report_parser.play_dual_rumble = uni_hid_parser_ds4_play_dual_rumble;
-        d->report_parser.device_dump = uni_hid_parser_ds4_device_dump;
-        logi("Device detected as DualShock 4: 0x%02x\n", type);
-    } else {
-        d->report_parser.init_report = uni_hid_parser_generic_init_report;
-        d->report_parser.parse_usage = uni_hid_parser_generic_parse_usage;
-        logi("Not a PS4 controller (0x%04x:0x%04x). Using generic driver.\n", d->vendor_id, d->product_id);
+    switch (type) {
+        case CONTROLLER_TYPE_PS4Controller:
+            d->report_parser.setup = uni_hid_parser_ds4_setup;
+            d->report_parser.init_report = uni_hid_parser_ds4_init_report;
+            d->report_parser.parse_input_report = uni_hid_parser_ds4_parse_input_report;
+            d->report_parser.parse_feature_report = uni_hid_parser_ds4_parse_feature_report;
+            d->report_parser.set_lightbar_color = uni_hid_parser_ds4_set_lightbar_color;
+            d->report_parser.play_dual_rumble = uni_hid_parser_ds4_play_dual_rumble;
+            d->report_parser.device_dump = uni_hid_parser_ds4_device_dump;
+            logi("Device detected as DualShock 4: 0x%02x\n", type);
+            break;
+        case CONTROLLER_TYPE_PS5Controller:
+            d->report_parser.init_report = uni_hid_parser_ds5_init_report;
+            d->report_parser.setup = uni_hid_parser_ds5_setup;
+            d->report_parser.parse_input_report = uni_hid_parser_ds5_parse_input_report;
+            d->report_parser.parse_feature_report = uni_hid_parser_ds5_parse_feature_report;
+            d->report_parser.set_player_leds = uni_hid_parser_ds5_set_player_leds;
+            d->report_parser.set_lightbar_color = uni_hid_parser_ds5_set_lightbar_color;
+            d->report_parser.play_dual_rumble = uni_hid_parser_ds5_play_dual_rumble;
+            d->report_parser.device_dump = uni_hid_parser_ds5_device_dump;
+            logi("Device detected as DualSense: 0x%02x\n", type);
+            break;
+        case CONTROLLER_TYPE_XBoxOneController:
+            d->report_parser.setup = uni_hid_parser_xboxone_setup;
+            d->report_parser.init_report = uni_hid_parser_xboxone_init_report;
+            d->report_parser.parse_usage = uni_hid_parser_xboxone_parse_usage;
+            d->report_parser.play_dual_rumble = uni_hid_parser_xboxone_play_dual_rumble;
+            d->report_parser.device_dump = uni_hid_parser_xboxone_device_dump;
+            logi("Device detected as Xbox Wireless: 0x%02x\n", type);
+            break;
+        case CONTROLLER_TYPE_SwitchProController:
+        case CONTROLLER_TYPE_SwitchJoyConRight:
+        case CONTROLLER_TYPE_SwitchJoyConLeft:
+            d->report_parser.setup = uni_hid_parser_switch_setup;
+            d->report_parser.init_report = uni_hid_parser_switch_init_report;
+            d->report_parser.parse_input_report = uni_hid_parser_switch_parse_input_report;
+            d->report_parser.set_player_leds = uni_hid_parser_switch_set_player_leds;
+            d->report_parser.play_dual_rumble = uni_hid_parser_switch_play_dual_rumble;
+            d->report_parser.device_dump = uni_hid_parser_switch_device_dump;
+            logi("Device detected as Nintendo Switch controller: 0x%02x\n", type);
+            break;
+        case CONTROLLER_TYPE_8BitdoController:
+            d->report_parser.init_report = uni_hid_parser_8bitdo_init_report;
+            d->report_parser.parse_usage = uni_hid_parser_8bitdo_parse_usage;
+            logi("Device detected as 8BitDo: 0x%02x\n", type);
+            break;
+        default:   // CONTROLLER_TYPE_AndroidController
+            d->report_parser.init_report = uni_hid_parser_android_init_report;
+            d->report_parser.parse_usage = uni_hid_parser_android_parse_usage;
+            d->report_parser.set_player_leds = uni_hid_parser_android_set_player_leds;
+            if (d->vendor_id == UNI_HID_PARSER_STADIA_VID && d->product_id == UNI_HID_PARSER_STADIA_PID) {
+                d->report_parser.setup = uni_hid_parser_stadia_setup;
+                d->report_parser.play_dual_rumble = uni_hid_parser_stadia_play_dual_rumble;
+                logi("Device detected as Stadia: 0x%02x\n", type);
+            } else {
+                logi("Device detected as Android: 0x%02x\n", type);
+            }
+            break;
     }
 
     d->controller_type = type;

@@ -2,7 +2,7 @@
 
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
-"CYD2USB", the 3.2" ESP32-2432S032C and ESP32-2432S032R, and the 3.5" ESP32-3248S035C and ESP32-3248S035R**, with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
+"CYD2USB", the 3.2" ESP32-2432S032C and ESP32-2432S032R, and the 3.5" ESP32-3248S035C and ESP32-3248S035R**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
@@ -39,23 +39,25 @@ and a one-click web flasher.
 
 ## Supported boards
 
-| Board | Hardware | Display | Touch | PS4 Bluetooth | BLE pads | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
+| Board | Hardware | Display | Touch | PS4 controller | Other controllers | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ |
+| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ |
 | **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟡 | ❌ | ✅ | ✅ |
-| **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually), XPT2046 resistive, two USB ports | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028C** | 2.8" ILI9341, CST820 or GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S032R** | 3.2" ST7789 IPS, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S032C** | 3.2" ST7789 IPS, GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-3248S035R** | 3.5" ST7796 320×480, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
-| **ESP32-3248S035C** | 3.5" ST7796 320×480, GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually), XPT2046 resistive, two USB ports | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028C** | 2.8" ILI9341, CST820 or GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S032R** | 3.2" ST7789 IPS, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S032C** | 3.2" ST7789 IPS, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-3248S035R** | 3.5" ST7796 320×480, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| **ESP32-3248S035C** | 3.5" ST7796 320×480, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 
 ✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
 
 - **Landscape** needs a controller, so the touch-only build stays in portrait.
-- **BLE pads** (Xbox, Switch Pro, 8BitDo in BLE mode) aren't supported yet; only the PS4 controller (Bluetooth Classic) is.
+- **Other controllers:** new in 2.15.0, on every Bluetooth build: PS5 DualSense, Switch Pro and Joy-Con, Xbox Wireless
+  (Bluetooth models), 8BitDo, Stadia and most Android-style pads, including the ones that use Bluetooth Low Energy.
+  Only the PS4 controller has been tried on a real board so far.
 - **Fills screen:** the 3.5" boards have a 320×480 screen. For now they show the same 240×320 picture in the
   middle, with a black border. A full-screen layout for them is planned once someone confirms the board works.
 - Tried a board? **[Send a board test report](https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md)**
@@ -99,7 +101,7 @@ What to expect:
    their touch chip varies (and on the 3.5" the picture doesn't start at the touch layer's corner).
    *Setup → Display & touch → Calibrate touch* redoes it.
 2. **It starts in portrait** with on-screen buttons, so it can be played by touch right away. If the picture is
-   upside down, **hold BOOT for 1 second** on the game list to rotate it. Pair a PS4 controller to play in
+   upside down, **hold BOOT for 1 second** on the game list to rotate it. Pair a controller to play in
    landscape.
 3. Everything else (SD card, sound, LED, USB transfer, cheats, saves) is the same as on the 2.4" C board.
 
@@ -127,7 +129,7 @@ with colors that come out inverted. Not every unit is the same, so both 2.8" bui
 | **Systems** | Game Boy (`.gb`), Game Boy Color (`.gbc`), NES (`.nes`, most licensed games) |
 | **Speed** | Full speed (60 fps emulated, 50 for PAL NES), sound through the board's speaker |
 | **Games** | Read from a microSD card, organized in any folders you like, thousands per folder |
-| **Two builds** | Bluetooth (PS4 controller, landscape) or touch-only (on-screen buttons, portrait, more game space) |
+| **Two builds** | Bluetooth (PS4, PS5, Xbox, Switch Pro, 8BitDo... controllers, landscape) or touch-only (on-screen buttons, portrait, more game space) |
 | **Saving** | Battery saves written automatically, plus one save state per game for every system |
 | **Cheats** | GameShark / Pro Action Replay codes from `.cht` files, a built-in cheat finder, and a ready-made pack for 2,572 games |
 | **Game list** | Folders, scrolling long names, A–Z jump (letter strip in landscape, letter grid in portrait) |
@@ -148,26 +150,27 @@ You need:
 - a **microSD card** (any size; it gets formatted FAT32)
 - a **USB cable that carries data** (some cables only charge)
 - **Chrome or Edge on a computer**, for the web flasher
-- optional: a **PS4 (DualShock 4) controller**, for the Bluetooth build
+- optional: a **Bluetooth controller** for the Bluetooth build: PS4, PS5, Xbox (Bluetooth models), Switch Pro, 8BitDo...
 - your own game files (`.gb`, `.gbc`, `.nes`). This project doesn't include or link to any games.
 
 Steps:
 
 1. **Pick a build.** On the **ESP32-2432S024C**:
-   - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
+   - **Bluetooth:** best with a controller (PS4, PS5, Xbox, Switch Pro, 8BitDo...). Starts in landscape and has 2.8 MB of flash for games.
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
 
    On any **other board**, use the build with its model number: **ESP32-2432S024R**, **ESP32-2432S028R** (one USB
    port), **CYD2USB** (two USB ports), **ESP32-2432S028C**, **ESP32-2432S032R / C** or **ESP32-3248S035R / C**.
-   Each has touch and Bluetooth, and 2.9 MB for games.
+   Each has touch and Bluetooth, and 2.8 MB for games.
    See [Testing the new builds](#testing-the-new-builds-everything-but-the-24-c).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
    games into them. Optional: unzip the [cheat pack](docs/cheats/HAN-CHEATS-GB-GBC-NES.zip) to the root of the card.
 4. **Power on:** insert the card and press RST. After the boot animation you'll see your folders.
-5. **Bluetooth build only:** open *Setup → Controller (Bluetooth) → Pair new controller*. Then hold
-   **SHARE + PS** on the PS4 controller until its light bar flashes quickly.
+5. **Bluetooth build only:** open *Setup → Controller (Bluetooth) → Pair new controller*. Then put the controller
+   in pairing mode: **PS4** hold SHARE + PS, **PS5** hold CREATE + PS, **Xbox** hold the pair button on top,
+   **Switch Pro** hold the sync button on top. For others, see the controller's manual.
 6. **Tap a game.** The first launch copies it into the board's flash, with a progress bar. After that it starts instantly.
 
 ---
@@ -360,7 +363,7 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 - The touch screen reads one finger at a time (a CST820 limit).
 - With the on-screen buttons hidden, tap anywhere to open the pause menu.
 
-**PS4 controller (Bluetooth build):**
+**Bluetooth controller (Bluetooth build)** (PlayStation names; other controllers use the same positions):
 
 | Controller | In a game | In menus |
 |---|---|---|
@@ -370,6 +373,7 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 | Share | SELECT | A–Z jump in the game list |
 | PS button | Pause menu | Close the menu |
 
+- On Xbox and Switch controllers, Options / Share / PS are Menu / View / Xbox (or + / − / Home).
 - The default **Button layout** is "Game Boy": the right button is A, like on a real Game Boy. Switch it to "Xbox"
   in *Setup → Controller* if you'd rather have the bottom button as A.
 - With a controller connected, menus show which buttons do OK and Back.
@@ -541,11 +545,16 @@ for both, not as recordings.
 LED-dimming hardware sets each color's brightness. A small timer every 30 ms works out the breathing level and
 the save/cheat blinks, so the LED costs the games nothing.
 
-**Slimmed Bluetooth (Bluetooth build).** The Bluepad32/BTstack Bluetooth library is trimmed to fit, which
-saves about 109 KB of flash and 32 KB of RAM:
-- PS4 controllers only, one at a time
+**Slimmed Bluetooth (Bluetooth build).** The Bluepad32/BTstack Bluetooth library is trimmed to fit:
+- one controller at a time
 - a smaller receive buffer
-- no Bluetooth Low Energy
+- the drivers for PS4, PS5, Xbox, Switch Pro / Joy-Con, 8BitDo, Stadia and Android-style pads only, with a short
+  list of their IDs instead of Bluepad32's 8 KB table (unknown pads use the Android driver, which suits most)
+- Bluetooth Low Energy controllers work, but Bluepad32's own BLE settings service (for phone apps) is left out
+
+BLE and the extra drivers came back in 2.15.0. They cost 69 KB of flash and 2 KB of RAM, so the app's space in
+flash grew from 1 MB to 1.125 MB and the game area shrank from 2.94 MB to 2.81 MB. A game bigger than that still
+plays: its least-used parts stay on the SD card, as before.
 
 The modified files are in [`src/bt_slim`](src/bt_slim).
 
@@ -576,7 +585,7 @@ licensed games.
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
 | Touch is off | *Setup → Display & touch → Calibrate touch*. |
-| Controller won't pair | Bluetooth build only, PS4 controllers only. Hold SHARE + PS until the light bar flashes quickly, then *Pair new controller*. |
+| Controller won't pair | Bluetooth build only. Open *Pair new controller* first, then put the controller in pairing mode (PS4: SHARE + PS; PS5: CREATE + PS; Xbox: pair button; Switch Pro: sync button). If it paired with another device before, *Forget all controllers* and try again. Xbox controllers may need a firmware update (Xbox Accessories app) for Bluetooth. |
 | A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |
 | No cheats for a game | The `.cht` file name must match the game's name (case, punctuation and `( )` / `[ ]` tags are ignored). Rename the file if needed. |
 | NES game says "Mapper N isn't supported" | That cartridge chip isn't emulated (see the list above). Bootleg carts like the NES Street Fighter ports aren't supported. |
