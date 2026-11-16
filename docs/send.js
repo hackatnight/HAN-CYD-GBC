@@ -170,18 +170,22 @@ export class HnxLink {
   }
 }
 
-// Folders under /Roms (two levels deep) for the "Save to" list.
+// Folders for the "Save to" list: everything under /Roms (two levels deep), plus game
+// folders kept at the top of the card (the board shows those too).
+const SKIP_TOP = new Set(['roms', 'gbc', 'cheats', 'saves', 'system volume information']);
 export async function romFolders(link) {
   const out = [];
-  const walk = async (dir, depth) => {
+  const walk = async (dir, depth, skipTop) => {
     let subs = [];
     try { subs = await link.listFolders(dir); } catch (e) { return; }
     for (const s of subs.sort((a, b) => a.localeCompare(b))) {
-      const p = `${dir}/${s}`;
+      if (skipTop && (SKIP_TOP.has(s.toLowerCase()) || s.startsWith('.'))) continue;
+      const p = `${dir === '/' ? '' : dir}/${s}`;
       out.push(p);
-      if (depth < 2) await walk(p, depth + 1);
+      if (depth < 2) await walk(p, depth + 1, false);
     }
   };
-  await walk('/Roms', 0);
+  await walk('/Roms', 0, false);
+  await walk('/', 1, true);
   return out;
 }

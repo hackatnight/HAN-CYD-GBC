@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-2432S028 with two USB ports (CYD2USB)",
-  "version": "2.18.1",
+  "version": "2.19.0",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32", "parts": [ { "path": "HAN-CYD-GBC-2432S028-2USB.bin", "offset": 0 } ] }

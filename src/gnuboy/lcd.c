@@ -69,7 +69,16 @@ static int dmg_pal[4][4] = {GB_DEFAULT_PALETTE,
 byte *vdest;
 
 /* line ring shared with the display task (see lcd.h) */
-un16 (*gb_ring)[160];   /* gb_ring_lines RGB565 lines (gb_ring_alloc) */
+byte (*gb_ring)[160];   /* gb_ring_lines lines of palette indexes (gb_ring_alloc) */
+byte *gb_ring_pal;       /* per ring line: which palette snapshot it uses */
+/* Palette snapshots: a line is stored as 1-byte color numbers plus the snapshot of the
+ * 64 colors in effect when it was drawn, so raster palette changes stay exact while the
+ * ring needs half the RAM of RGB565 lines. A new snapshot is taken only when a color
+ * changed since the last one. */
+un16 (*gb_pal_pool)[64];   /* GB_PAL_POOL snapshots, allocated with the ring */
+static int pal_last_line[GB_PAL_POOL];
+static int pal_cur, pal_used;
+static unsigned pal_ver = 1, pal_snap_ver = 0;
 int gb_ring_lines = GB_RING;
 volatile int gb_lines_out = 144;
 volatile int gb_lines_need = 0;
@@ -731,15 +740,40 @@ if (fb.enabled)
 			 * converted to RGB565 with the palette in effect right now, so GBC
 			 * "hi-color" screens that rewrite palettes every few lines stay exact.
 			 * Wait if the display is GB_RING lines behind. */
-			un16 *out;
-			byte *src = BUF;
-			int cnt = 160;
+			int r;
+			if (L == 0)
+			{   /* a drawn frame starts once the display has finished the last one */
+				for (r = 0; r < GB_PAL_POOL; r++) pal_last_line[r] = -1;
+				pal_used = 0;
+				pal_snap_ver = pal_ver - 1;
+			}
+			if (pal_snap_ver != pal_ver)
+			{
+				int s;
+				if (pal_used < GB_PAL_POOL) s = pal_used++;
+				else
+				{   /* all snapshots in use: reuse the oldest once the display is past it */
+					s = (pal_cur + 1) % GB_PAL_POOL;
+					while (pal_last_line[s] >= gb_lines_need) { }
+				}
+				memcpy(gb_pal_pool[s], PAL2, sizeof gb_pal_pool[s]);
+				pal_cur = s;
+				pal_snap_ver = pal_ver;
+			}
+			pal_last_line[pal_cur] = L;
 			while (L - gb_lines_need >= gb_ring_lines) { }
-			out = gb_ring[L % gb_ring_lines];
-			while (cnt--) *(out++) = PAL2[*(src++)];
+			r = L % gb_ring_lines;
+			memcpy(gb_ring[r], BUF, 160);
+			gb_ring_pal[r] = (byte)pal_cur;
 			__sync_synchronize();
 			gb_lines_out = L + 1;
-			if (gb_line_hook) gb_line_hook(L, gb_ring[L % gb_ring_lines]);
+			if (gb_line_hook)
+			{
+				static un16 rgb[160];
+				int x;
+				for (x = 0; x < 160; x++) rgb[x] = PAL2[BUF[x]];
+				gb_line_hook(L, rgb);
+			}
 		}
 	}
 }
@@ -764,6 +798,7 @@ inline static void updatepalette(int i)
 	b = (c >> 10) & 0x1f;
 
 	PAL2[i] = (r << 11) | (g << (5 + 1)) | (b);
+	pal_ver++;
 }
 
 inline void pal_write(int i, byte b)

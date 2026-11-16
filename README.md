@@ -595,6 +595,12 @@ erases flash and nothing can draw.
 
 If the screen can't keep up, frames are skipped. The game itself always runs at full speed.
 
+Game Boy lines sit in the ring as 1-byte color numbers, each with a snapshot of the palette that was in effect
+when the line was drawn (so games that change colors partway down the screen stay exact). A whole frame is 23 KB
+that way instead of 46 KB as RGB565, which matters on Game Boy Color games: they need 24 KB more work RAM, and
+when a whole frame doesn't fit, the emulator has to wait for the screen. `tools/hosttest/ringcheck.c` checks the
+ring against the core's own output, pixel for pixel.
+
 **No frame buffer.** The board has only about 300 KB of RAM and no PSRAM.
 - GB/GBC lines go straight to the ring as screen colors, so Game Boy Color "hi-color" pictures come out exactly right.
 - NES lines go as 8-bit palette numbers. The ring holds a whole frame when there's room, or fewer lines when there isn't.

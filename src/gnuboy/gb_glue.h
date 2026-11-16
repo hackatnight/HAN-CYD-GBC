@@ -12,7 +12,10 @@ void gb_set_framebuffer(uint8_t *buf, int render);
 void gb_frame_end();
 /* line ring (lcd.c) */
 #define GB_RING 32
-extern uint16_t (*gb_ring)[160];
+#define GB_PAL_POOL 32
+extern uint8_t (*gb_ring)[160];      /* lines of palette indexes */
+extern uint8_t *gb_ring_pal;         /* per line: snapshot in gb_pal_pool */
+extern uint16_t (*gb_pal_pool)[64];
 extern int gb_ring_lines;
 /* (re)allocate the line ring; 0 = ok (keeps the old ring on failure) */
 int gb_ring_alloc(int lines);

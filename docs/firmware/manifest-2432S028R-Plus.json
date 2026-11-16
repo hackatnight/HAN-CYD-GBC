@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-2432S028R Plus (2.8\", USB-C, NerdMiner kits)",
-  "version": "2.18.1",
+  "version": "2.19.0",
   "new_install_prompt_erase": true,
   "builds": [
     {

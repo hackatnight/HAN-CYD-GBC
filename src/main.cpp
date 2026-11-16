@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.18.1"
+#define APP_VERSION "2.19.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1916,7 +1916,10 @@ static inline void expandLine(int line, uint16_t *out) {
     const uint8_t *s = nes_ring + (line % nes_ring_lines) * NES_W;
     for (int x = 0; x < NES_W; x++) out[x] = nes_pal565[s[x]];
   } else {
-    memcpy(out, gb_ring[line % gb_ring_lines], 160 * 2);   // already RGB565
+    int r = line % gb_ring_lines;              // 1-byte colors + that line's palette snapshot
+    const uint8_t *s = gb_ring[r];
+    const uint16_t *p = gb_pal_pool[gb_ring_pal[r]];
+    for (int x = 0; x < 160; x++) out[x] = p[s[x]];
   }
 }
 
@@ -2422,9 +2425,62 @@ static bool sdInit() {
   return sdOk;
 }
 
+// True if a folder (or its subfolders, `depth` levels down) holds at least one game.
+static bool fatDirHasGames(const String &path, int depth) {
+  FF_DIR dir;
+  FILINFO fno;
+  String p = String(fatDrive) + ":" + path;
+  if (f_opendir(&dir, p.c_str()) != FR_OK) return false;
+  bool found = false;
+  while (!found && f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
+    if ((fno.fattrib & (AM_HID | AM_SYS)) || fno.fname[0] == '.') continue;
+    if (fno.fattrib & AM_DIR) {
+      if (depth > 0 && !hiddenDir(String(fno.fname)))
+        found = fatDirHasGames(path + (path.endsWith("/") ? "" : "/") + fno.fname, depth - 1);
+    } else if (romKind(fno.fname) >= 0) {
+      found = true;
+    }
+  }
+  f_closedir(&dir);
+  return found;
+}
+
+// Games anywhere on the card outside /Roms (top-level game files, or folders other than
+// /Roms with games in them, up to 3 levels deep)? The firmware's own /gbc folder only
+// counts if someone put games in it.
+static bool gamesOutsideRoms() {
+  if (fatDrive < 0) {
+    FF_DIR dir;
+    for (int d = 0; d < 4 && fatDrive < 0; d++) {
+      String p = String(d) + ":/";
+      if (f_opendir(&dir, p.c_str()) == FR_OK) { fatDrive = d; f_closedir(&dir); }
+    }
+    if (fatDrive < 0) return false;
+  }
+  FF_DIR dir;
+  FILINFO fno;
+  String p = String(fatDrive) + ":/";
+  if (f_opendir(&dir, p.c_str()) != FR_OK) return false;
+  bool found = false;
+  while (!found && f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
+    if ((fno.fattrib & (AM_HID | AM_SYS)) || fno.fname[0] == '.') continue;
+    if (fno.fattrib & AM_DIR) {
+      if (strcasecmp(fno.fname, "Roms") && !hiddenDir(String(fno.fname)))
+        found = fatDirHasGames(String("/") + fno.fname, 2);
+    } else if (romKind(fno.fname) >= 0) {
+      found = true;
+    }
+  }
+  f_closedir(&dir);
+  return found;
+}
+
 // (Re)reads the card: finds the games root and lists the current folder.
+// The root is /Roms only when every game on the card is inside it; otherwise it is the
+// top of the card, so games kept elsewhere never disappear when /Roms gets created
+// (the web page's USB transfer makes /Roms/GB, /Roms/GBC and /Roms/NES).
 static void scanRoms() {
-  String root = SD.exists("/Roms") ? String("/Roms") : String("/");
+  String root = (SD.exists("/Roms") && !gamesOutsideRoms()) ? String("/Roms") : String("/");
   if (root != rootDir) { rootDir = root; curDir = root; }
   if (!curDir.startsWith(rootDir)) curDir = rootDir;
   listDir();
@@ -4216,10 +4272,10 @@ static void runGame(const RomEntry &r) {
   if (memOk && !streaming) {
     // Full-frame handoff (144 lines): the emulator never waits for the display,
     // as before 4 MB support. Only if cart RAM + the play reserve still fit after it.
-    size_t extra = (size_t)(144 - gb_ring_lines) * 160 * 2;
+    size_t extra = (size_t)(144 - gb_ring_lines) * 160;
     size_t freeB = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    if (largest >= 144 * 160 * 2 + 1024 && freeB > extra + gb_sram_size() + PLAY_RESERVE + 8192)
+    if (largest >= 144 * 160 + 1024 && freeB > extra + gb_sram_size() + PLAY_RESERVE + 8192)
       gb_ring_alloc(144);
     Serial.printf("Display ring: %d lines\n", gb_ring_lines);
   }

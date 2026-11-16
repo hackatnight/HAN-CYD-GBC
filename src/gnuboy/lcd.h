@@ -61,7 +61,10 @@ void lcd_set_dmg_palette(const int *p);
  * gb_lines_out = lines finished in this frame, gb_lines_need = oldest line the
  * display still needs (the emulator waits rather than overwrite it). */
 #define GB_RING 32
-extern un16 (*gb_ring)[160];
+#define GB_PAL_POOL 32
+extern byte (*gb_ring)[160];
+extern byte *gb_ring_pal;
+extern un16 (*gb_pal_pool)[64];
 extern int gb_ring_lines;
 extern volatile int gb_lines_out, gb_lines_need;
 extern void (*gb_line_hook)(int line, const un16 *pixels);

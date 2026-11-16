@@ -121,6 +121,7 @@ wBandLo = $C210
 wBandHi = $C220
 wBandBgp = $C230
 wStarT = $C240          ; warp starfields: each star's distance step
+wLineScx = $C300        ; per screen line: its X scroll (strip and wobble), set in VBlank
 
 LCD_ON = $93            ; on, tiles at $8000, sprites on, background on
 SPR_DISK = 122
@@ -252,21 +253,23 @@ VBlankISR:
 ; scroller scene, the wobbling text rows with a GBC rainbow.
 StatISR:
     push af
-    push bc
     push hl
     ldh a,[LY]
     inc a
-    ld b,a                  ; the line about to be drawn
+    ld l,a                  ; the line about to be drawn
+    ld h,HIGH(wLineScx)     ; its scroll was worked out in VBlank: set it first, while
+    ld a,[hl]               ; there's still time before the line starts drawing
+    ldh [SCX],a
+    push bc
+    ld b,l
     ldh a,[hBandTop]
     ld c,a
     ld a,b
     sub c
     cp BAND_H
     jr nc,.notband
-    ld l,a                  ; line within the strip: values precomputed by BandPrep
+    ld l,a                  ; line within the strip: shine values precomputed by BandPrep
     ld h,HIGH(wBandScx)
-    ld a,[hl]
-    ldh [SCX],a
     set 5,l
     set 4,l
     ld a,[hl]               ; wBandBgp
@@ -289,10 +292,10 @@ StatISR:
     ldh [BGP],a
     ldh a,[hWobOn]
     and a
-    jr z,.flat
+    jr z,.done
     ldh a,[hCGB]
     and a
-    jr z,.nopal
+    jr z,.done
     ld a,$86                ; palette 0, color 3: rainbow
     ldh [BCPS],a
     ldh a,[hFrame]
@@ -304,27 +307,9 @@ StatISR:
     inc h
     ld a,[hl]
     ldh [BCPD],a
-.nopal:
-    ld a,b
-    cp WOB_TOP
-    jr c,.flat
-    cp WOB_BOT
-    jr nc,.flat
-    ldh a,[hFrame]
-    add a,a
-    add a,b
-    and 63
-    ld l,a
-    ld h,HIGH(SineTab)
-    ld a,[hl]
-    ldh [SCX],a
-    jr .done
-.flat:
-    xor a
-    ldh [SCX],a
 .done:
-    pop hl
     pop bc
+    pop hl
     pop af
     reti
 
@@ -514,6 +499,34 @@ BandPrep:
     ld a,c
     cp BAND_H
     jr nz,.l
+    ldh a,[hBandTop]        ; the strip's scrolls into the per-line table
+    ld e,a
+    ld d,HIGH(wLineScx)
+    ld hl,wBandScx
+    ld b,BAND_H
+.cp:
+    ld a,[hl+]
+    ld [de],a
+    inc e
+    dec b
+    jr nz,.cp
+    ldh a,[hWobOn]          ; scroller scene: the wobbling rows
+    and a
+    ret z
+    ld e,WOB_TOP
+.wb:
+    ldh a,[hFrame]
+    add a,a
+    add a,e
+    and 63
+    ld l,a
+    ld h,HIGH(SineTab)
+    ld a,[hl]
+    ld [de],a
+    inc e
+    ld a,e
+    cp WOB_BOT
+    jr nz,.wb
     ret
 
 ; ---------------------------------------------------------------- music
@@ -1303,6 +1316,10 @@ SceneSetup:
     call Fill
     ld hl,OAMBUF+$40        ; sprites 16-39 off
     ld bc,$A0-$40
+    xor a
+    call Fill
+    ld hl,wLineScx
+    ld bc,256
     xor a
     call Fill
     call LoadCgbPalettes
