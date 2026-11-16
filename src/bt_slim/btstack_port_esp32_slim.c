@@ -64,6 +64,9 @@
 #include "btstack_tlv_esp32.h"
 #include "classic/btstack_link_key_db.h"
 #include "classic/btstack_link_key_db_tlv.h"
+#ifdef ENABLE_BLE
+#include "ble/le_device_db_tlv.h"
+#endif
 #include "hci.h"
 #include "hci_dump.h"
 #include "esp_bt.h"
@@ -399,7 +402,10 @@ uint8_t btstack_init(void){
 
 #ifdef ENABLE_BLE
     // setup LE Device DB using TLV
-    /* H@N-CYD-GBC: no LE device database (LE is off, see ble_off_slim.c) */
+    /* H@N-CYD-GBC: needed again since BLE came back in v2.15. Without it, pairing a
+     * classic controller (PS4 in pairing mode) derives an LE key, BTstack's LE database
+     * asserts on its missing storage, and the board reboots. */
+    le_device_db_tlv_configure(btstack_tlv_impl, NULL);
 #endif
 
     // inform about BTstack state
