@@ -46,6 +46,7 @@ and a one-click web flasher.
 | **Saving** | Battery saves written automatically, plus one save state per game for every system |
 | **Cheats** | GameShark / Pro Action Replay codes from `.cht` files, a built-in cheat finder, and a ready-made pack for 2,572 games |
 | **Game list** | Folders, scrolling long names, A–Z jump (letter strip in landscape, letter grid in portrait) |
+| **Shortcuts** | Continue your last game in one tap, plus Favorites, Recent and Most played lists at the top |
 | **Looks** | Code-drawn wireframe boot and loading screens, 4 menu themes, animated menus |
 | **LED** | The board's RGB LED: solid or breathing in any color, blinks on saves and cheats |
 | **Big games** | Up to 8 MB: what doesn't fit in flash is read from the SD card while you play |
@@ -69,7 +70,7 @@ Steps:
 
 1. **Pick a build.**
    - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
-   - **Touch-only:** plays with on-screen buttons in portrait. It has 3.3 MB of flash for games and more free memory.
+   - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
@@ -202,6 +203,35 @@ the page instead.
 - The selected row glows, and the header has twinkling stars and a light that runs along its bronze edge.
 - **Hold BOOT for 1 second** to switch to the next screen orientation.
 
+### Continue, Favorites, Recent and Most played
+
+<p align="center"><img src="docs/images/main-list.png" width="400" alt="The main list with Continue, Favorites, Recent and Most played"></p>
+
+The top of the main list has shortcuts, so you don't have to dig through thousands of games:
+
+| Row | What it does |
+|---|---|
+| ▶ **Continue: *game*** | Starts the last game you played, in one tap |
+| ★ **Favorites** | The games you've marked, A to Z |
+| 🕒 **Recent** | Your last 15 games, newest first |
+| 📊 **Most played** | Your top 15 by total time played, with the time shown |
+
+Each row only appears once it has something in it.
+
+**Marking a favorite:** either way switches it on and off.
+- **Hold your finger on a game** in any list for half a second. The LED blinks if *Flash on cheat* is on.
+- **In a game:** *pause menu → Favorite*.
+
+Favorites show a small star next to their name everywhere.
+
+**How it's stored:**
+- A small text file, `/gbc/history.txt`, on the SD card, so it survives reflashing. Each line holds a game's path,
+  total play time, when you last started it, and whether it's a favorite.
+- It's read and rewritten one line at a time, so it needs almost no memory. It's updated just before a game starts
+  and just after it ends, never while you play.
+- Games you move or delete simply drop out of the lists.
+- Only the last 300 games you've played are kept (favorites are always kept).
+
 ### A–Z jump
 
 This shows up in any folder that doesn't fit on one screen. Letters with no games are dimmed and skipped.
@@ -240,7 +270,7 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 <p align="center"><img src="docs/images/pause-cheats.png" width="720" alt="Pause menu and cheat list"></p>
 
 Open it with MENU, BOOT, the PS button or a tap (when the on-screen buttons are hidden). It has: Resume,
-**Save state**, **Load state**, **Cheats**, **Write battery save**, Volume, Scaling, palette, Show FPS, **LED**,
+**Save state**, **Load state**, **Cheats**, **Favorite**, **Write battery save**, Volume, Scaling, palette, Show FPS, **LED**,
 Reset game and **Save & quit to list**.
 
 **Battery saves.** These work like the cartridge's own save. They load when the game starts, and the emulator

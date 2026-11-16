@@ -1,6 +1,6 @@
 # Name,   Type, SubType, Offset,   Size,     Flags
-# Touch-only build: 640 KB app, 3.31 MB for ROMs
+# Touch-only build: 704 KB app, 3.25 MB for ROMs
 # (Arduino IDE only reads partitions.csv: copy this file over it for a touch-only build)
 nvs,      data, nvs,     0x9000,   0x5000,
-app0,     app,  factory, 0x10000,  0xA0000,
-rom,      data, 0x40,    0xB0000,  0x350000,
+app0,     app,  factory, 0x10000,  0xB0000,
+rom,      data, 0x40,    0xC0000,  0x340000,

@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.9.0"
+#define APP_VERSION "2.10.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1685,7 +1685,9 @@ static bool sdOk = false;
 // Only the names are kept (packed in 4 KB blocks, ~8 bytes + the name per entry);
 // paths are built from the current folder and file sizes are read only for the
 // rows on screen. A folder lists until RAM gets low (thousands of games).
-enum { K_GB = 0, K_NES = 1, K_DIR = 2, K_UP = 3, K_MORE = 4 };
+enum { K_GB = 0, K_NES = 1, K_DIR = 2, K_UP = 3, K_MORE = 4,
+       K_CONT = 5,        // "Continue: <last game>" (name = the game's full path)
+       K_VFAV = 6, K_VRECENT = 7, K_VMOST = 8 };   // the Favorites / Recent / Most played lists
 struct RomEntry {            // the game being launched
   String path;
   uint32_t size;
@@ -1694,9 +1696,10 @@ struct RomEntry {            // the game being launched
 };
 #define SIZE_UNKNOWN 0xFFFFFFFFu
 struct Ent {                 // one row of the folder list
-  const char *name;
-  uint32_t size;             // SIZE_UNKNOWN until the row is shown
+  const char *name;          // in the Favorites / Recent / Most played lists: the full path
+  uint32_t size;             // SIZE_UNKNOWN until the row is shown; Most played: seconds played
   uint8_t kind;
+  uint8_t fav;               // marked as a favorite (shows a star); 0 when left out
 };
 static std::vector<Ent> roms;          // entries of the current folder
 static std::vector<char *> nameBlocks; // packed names
@@ -1753,7 +1756,10 @@ static bool hiddenDir(const String &n) {
          l == "cheats";   // /CHEATS: read by the emulator, never listed
 }
 
+#define VDIR_PREFIX "/:"   // the Favorites / Recent / Most played lists aren't real folders
+static bool isVirtualDir(const String &d) { return d.startsWith(VDIR_PREFIX); }
 static String parentDir(const String &d) {
+  if (isVirtualDir(d)) return rootDir;
   int sl = d.lastIndexOf('/');
   return sl <= 0 ? String("/") : d.substring(0, sl);
 }
@@ -1765,7 +1771,10 @@ static String childPath(const char *name) {
 }
 
 static String entryPath(const Ent &e) {
-  return e.kind == K_UP ? parentDir(curDir) : childPath(e.name);
+  if (e.kind == K_UP) return parentDir(curDir);
+  if (e.kind >= K_VFAV) return String(VDIR_PREFIX) + e.name;
+  if (e.kind == K_CONT || isVirtualDir(curDir)) return String(e.name);   // already a full path
+  return childPath(e.name);
 }
 
 // Size of a game file. Sizes come with the folder listing; if one is missing it is NOT
@@ -1822,8 +1831,145 @@ static bool listDirFat(uint32_t t0) {
   return true;
 }
 
+// ----------------------------------------------------------------------------
+// Play history and favorites: /gbc/history.txt on the SD card (survives reflashing).
+// First line "#HNX history 1 <counter>", then one line per game:
+//   <favorite 0/1> TAB <seconds played> TAB <counter when last started> TAB <full path>
+// It's read and rewritten one line at a time, so it never needs much RAM, even mid-game.
+// ----------------------------------------------------------------------------
+#define HIST_PATH "/gbc/history.txt"
+#define HIST_KEEP 300   // non-favorites played longer ago than the last 300 starts are dropped
+struct HistLine { uint8_t fav; uint32_t secs, last; const char *path; };
+
+// Calls fn for each game in the history. Returns the counter (0 if there's no file).
+template <typename F> static uint32_t histForEach(F fn) {
+  File f = SD.open(HIST_PATH);
+  if (!f) return 0;
+  static char line[300];
+  uint32_t seq = 0;
+  while (f.available()) {
+    int n = f.readBytesUntil('\n', line, sizeof line - 1);
+    line[n] = 0;
+    if (line[0] == '#') { const char *c = strrchr(line, ' '); if (c) seq = strtoul(c + 1, nullptr, 10); continue; }
+    char *a = strchr(line, '\t'), *b = a ? strchr(a + 1, '\t') : nullptr, *c = b ? strchr(b + 1, '\t') : nullptr;
+    if (!c) continue;
+    HistLine h = { (uint8_t)(line[0] == '1'), (uint32_t)strtoul(a + 1, nullptr, 10), (uint32_t)strtoul(b + 1, nullptr, 10), c + 1 };
+    fn(h);
+  }
+  f.close();
+  return seq;
+}
+
+enum { HIST_START, HIST_TIME, HIST_FAV };
+// Updates one game: HIST_START (it's being played now), HIST_TIME (add secs played),
+// HIST_FAV (switch favorite on/off). Returns the game's favorite state afterwards.
+static bool histUpdate(const String &path, int op, uint32_t secs = 0) {
+  SD.mkdir("/gbc");
+  uint32_t seq = histForEach([](const HistLine &) {});
+  if (op == HIST_START) seq++;
+  File out = SD.open(HIST_PATH ".tmp", FILE_WRITE);
+  if (!out) return false;
+  out.printf("#HNX history 1 %u\n", (unsigned)seq);
+  bool found = false, fav = false;
+  histForEach([&](const HistLine &h) {
+    HistLine e = h;
+    if (!found && path == h.path) {
+      found = true;
+      if (op == HIST_START) e.last = seq;
+      if (op == HIST_TIME) e.secs += secs;
+      if (op == HIST_FAV) e.fav ^= 1;
+      fav = e.fav;
+    } else if (!e.fav && e.last + HIST_KEEP < seq) {
+      return;   // not played for a long time: forget it
+    }
+    out.printf("%d\t%u\t%u\t%s\n", e.fav, (unsigned)e.secs, (unsigned)e.last, e.path);
+  });
+  if (!found) {
+    fav = op == HIST_FAV;
+    out.printf("%d\t%u\t%u\t%s\n", fav ? 1 : 0, (unsigned)(op == HIST_TIME ? secs : 0),
+               (unsigned)(op == HIST_START ? seq : 0), path.c_str());
+  }
+  out.close();
+  SD.remove(HIST_PATH);
+  SD.rename(HIST_PATH ".tmp", HIST_PATH);
+  return fav;
+}
+
+static String curGamePath;   // the game being played (for the pause menu's Favorite)
+
+static String fileName(const char *path) { const char *s = strrchr(path, '/'); return String(s ? s + 1 : path); }
+
+// Rows for the top of the main list: Continue, Favorites, Recent, Most played.
+static void histRootRows() {
+  uint32_t nFav = 0, nRec = 0, nMost = 0;
+  struct R { String path; uint32_t last; };
+  std::vector<R> recent;   // the 5 most recent, in case the latest one was deleted
+  histForEach([&](const HistLine &h) {
+    if (h.fav) nFav++;
+    if (h.secs) nMost++;
+    if (!h.last) return;
+    nRec++;
+    auto at = std::find_if(recent.begin(), recent.end(), [&](const R &r) { return h.last > r.last; });
+    recent.insert(at, R{ h.path, h.last });
+    if (recent.size() > 5) recent.pop_back();
+  });
+  std::vector<Ent> top;
+  for (auto &r : recent)
+    if (SD.exists(r.path)) {
+      if (const char *n = storeName(r.path)) top.push_back({ n, SIZE_UNKNOWN, K_CONT });
+      break;
+    }
+  if (nFav) top.push_back({ "Favorites", nFav, K_VFAV });
+  if (nRec) top.push_back({ "Recent", nRec, K_VRECENT });
+  if (nMost) top.push_back({ "Most played", nMost, K_VMOST });
+  roms.insert(roms.begin(), top.begin(), top.end());
+}
+
+// Fills the Favorites / Recent / Most played list (curDir is "/:<name>").
+static void histList() {
+  const String which = curDir.substring(2);
+  const int K = 15;
+  struct Pick { String path; uint32_t key; uint8_t fav; };
+  std::vector<Pick> picks;
+  histForEach([&](const HistLine &h) {
+    if (which == "Favorites") { if (h.fav) picks.push_back({ h.path, 0, 1 }); return; }
+    uint32_t key = which == "Recent" ? h.last : h.secs;
+    if (!key) return;
+    if ((int)picks.size() == K && key <= picks.back().key) return;   // keep only the top K
+    Pick p = { h.path, key, h.fav };
+    auto at = std::find_if(picks.begin(), picks.end(), [&](const Pick &q) { return key > q.key; });
+    picks.insert(at, p);
+    if ((int)picks.size() > K) picks.pop_back();
+  });
+  if (which == "Favorites")
+    std::sort(picks.begin(), picks.end(), [](const Pick &a, const Pick &b) {
+      return strcasecmp(fileName(a.path.c_str()).c_str(), fileName(b.path.c_str()).c_str()) < 0; });
+  for (auto &p : picks) {
+    int k = romKind(p.path.c_str());
+    if (k < 0 || !SD.exists(p.path)) continue;   // moved or deleted: skip it
+    const char *n = storeName(p.path);
+    if (!n) break;
+    roms.push_back({ n, which == "Most played" ? p.key : SIZE_UNKNOWN, (uint8_t)k, p.fav });
+    romFiles++;
+  }
+}
+
+// Stars on the favorites in a normal folder.
+static void histMarkFavorites() {
+  histForEach([&](const HistLine &h) {
+    if (!h.fav || parentDir(h.path) != curDir) return;
+    String n = fileName(h.path);
+    for (auto &e : roms) if (e.kind <= K_NES && n == e.name) { e.fav = 1; break; }
+  });
+}
+
 static void listDir() {
   clearList();
+  if (isVirtualDir(curDir)) {   // Favorites / Recent / Most played
+    roms.push_back({ "..", 0, K_UP });
+    histList();
+    return;
+  }
   if (curDir != rootDir) roms.push_back({ "..", 0, K_UP });
   if (!SD.exists(curDir)) curDir = rootDir;   // folder vanished (card swapped): back to the top
   if (curDir == rootDir) roms.clear();
@@ -1853,6 +1999,8 @@ static void listDir() {
     return strcasecmp(a.name, b.name) < 0;
   });
   if (hiddenCount) roms.push_back({ "", 0, K_MORE });
+  if (curDir == rootDir) histRootRows();   // Continue / Favorites / Recent / Most played on top
+  else histMarkFavorites();
   Serial.printf("Folder %s: %d entries (%d not shown) in %u ms, heap free %u\n", curDir.c_str(), (int)roms.size(),
                 hiddenCount, (unsigned)(millis() - t0), heap_caps_get_free_size(MALLOC_CAP_8BIT));
 }
@@ -3465,11 +3613,14 @@ static PauseResult pauseMenu() {
   while (true) {
     int sram = gb_sram_size();
     bool haveState = SD.exists(statePath);
+    bool isFav = false;
+    histForEach([&](const HistLine &h) { if (curGamePath == h.path) isFav = h.fav; });
     std::vector<MenuItem> it = {
       { "Resume", "" },
       { "Save state", haveState ? "replace" : "" },
       { "Load state", haveState ? "" : "empty" },
       { "Cheats", cheatsLabel() },
+      { "Favorite", isFav ? "Yes" : "No" },
       { "Write battery save", sram ? String(sram / 1024) + "KB" + (gb_sram_slots() < gb_sram_pages() ? " (paged)" : "")
                                    : String("n/a") },
       { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
@@ -3510,7 +3661,8 @@ static PauseResult pauseMenu() {
         return P_RESET;
       }
       case 3: cheatsMenu(); break;
-      case 4:
+      case 4: histUpdate(curGamePath, HIST_FAV); break;
+      case 5:
         if (sram) { bool ok = sramSave(); uiMessage(ok ? "Saved" : "Save FAILED", savePath.c_str(), ok ? C_GREEN : C_RED); delay(900); }
         else {
           // the original cartridge had no save memory: the game uses passwords or doesn't save
@@ -3518,15 +3670,15 @@ static PauseResult pauseMenu() {
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 5: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
-      case 6: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
-      case 7:
+      case 6: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 7: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
+      case 8:
         if (!gb_is_cgb()) { cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; lcd_set_dmg_palette(DMG_PALETTES[cfg.dmgPalette]); saveSettings(); }
         break;
-      case 8: cfg.showFps ^= 1; saveSettings(); break;
-      case 9: ledMenu(); break;
-      case 10: return P_RESET;
-      case 11: return P_QUIT;
+      case 9: cfg.showFps ^= 1; saveSettings(); break;
+      case 10: ledMenu(); break;
+      case 11: return P_RESET;
+      case 12: return P_QUIT;
     }
   }
 }
@@ -3853,11 +4005,14 @@ static PauseResult nesPauseMenu(const char *title) {
   while (true) {
     int sram = nes_sram_size();
     bool haveState = SD.exists(statePath);
+    bool isFav = false;
+    histForEach([&](const HistLine &h) { if (curGamePath == h.path) isFav = h.fav; });
     std::vector<MenuItem> it = {
       { "Resume", "" },
       { "Save state", haveState ? "replace" : "" },
       { "Load state", haveState ? "" : "empty" },
       { "Cheats", cheatsLabel() },
+      { "Favorite", isFav ? "Yes" : "No" },
       { "Write battery save", sram ? String(sram / 1024) + "KB" : String("n/a") },
       { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
       { "Scaling", scaleName() },
@@ -3894,24 +4049,25 @@ static PauseResult nesPauseMenu(const char *title) {
         return P_RESUME;
       }
       case 3: cheatsMenu(); break;
-      case 4:
+      case 4: histUpdate(curGamePath, HIST_FAV); break;
+      case 5:
         if (sram) { bool ok = nesSramSave(true); uiMessage(ok ? "Saved" : "Save FAILED", nesSavePath.c_str(), ok ? C_GREEN : C_RED); delay(900); }
         else {
           uiMessage("This game has no save memory", "It uses passwords or can't save", C_DIM);
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 5: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
-      case 6: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
-      case 7:
+      case 6: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 7: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
+      case 8:
         cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES;
         nes_build_palette(cfg.nesPalette, nes_pal565);
         saveSettings();
         break;
-      case 8: cfg.showFps ^= 1; saveSettings(); break;
-      case 9: ledMenu(); break;
-      case 10: return P_RESET;
-      case 11: return P_QUIT;
+      case 9: cfg.showFps ^= 1; saveSettings(); break;
+      case 10: ledMenu(); break;
+      case 11: return P_RESET;
+      case 12: return P_QUIT;
     }
   }
 }
@@ -4149,10 +4305,11 @@ static int browserMarq = -1;   // entry whose name is scrolling (-1 = none)
 #define AZ_STRIP_H 14   // 34 + 14 + 6 rows x 32 = 240: six games in landscape
 static uint32_t azMask = 0;   // letters that have at least one entry
 static int azLetter(const char *n) {
+  if (const char *sl = strrchr(n, '/')) n = sl + 1;   // full paths in the Favorites etc. lists
   int c = toupper((unsigned char)n[0]);
   return c >= 'A' && c <= 'Z' ? c - 'A' + 1 : 0;
 }
-static bool azEntry(const Ent &e) { return e.kind != K_UP && e.kind != K_MORE; }
+static bool azEntry(const Ent &e) { return e.kind != K_UP && e.kind != K_MORE && e.kind < K_CONT; }
 static bool azNeeded() { return (int)roms.size() > (SCR_H - 34) / BROWSER_ROW_H; }
 static bool azStripOn() { return SCR_W > SCR_H && azNeeded(); }
 static bool azButtonOn() { return SCR_W <= SCR_H && azNeeded(); }
@@ -4201,15 +4358,52 @@ static void azDrawStrip(int focus) {
 }
 
 // Right end of the name area of a row (the type and size sit to its right).
+static String playTime(uint32_t s) {
+  if (s < 3600) return String(max(1u, (unsigned)(s / 60))) + " min";
+  return String((unsigned)(s / 3600)) + "h " + String((unsigned)(s / 60 % 60)) + "m";
+}
+static bool iconRow(const Ent &e) { return e.kind == K_DIR || e.kind >= K_CONT; }
 static String browserTag(Ent &e) {
-  if (e.kind == K_DIR) return ">";
+  if (e.kind == K_DIR || e.kind >= K_VFAV) return ">";
+  if (curDir == VDIR_PREFIX "Most played" && e.size != SIZE_UNKNOWN) return playTime(e.size);
   const char *tag = e.kind == K_NES ? "NES" : isCgbName(e.name) ? "GBC" : "GB";
   uint32_t sz = entrySize(e);
   return sz == SIZE_UNKNOWN ? String(tag) : String(tag) + " " + String(sz / 1024) + "K";
 }
-static String browserName(Ent &e) { return e.kind == K_DIR ? String(e.name) : baseName(String(e.name)); }
+static String browserName(Ent &e) {
+  if (e.kind == K_DIR || e.kind >= K_VFAV) return String(e.name);
+  String n = baseName(fileName(e.name));
+  return e.kind == K_CONT ? "Continue: " + n : n;
+}
+
+// Small code-drawn icons for the special rows
+static void drawStar(int cx, int cy, int r, uint16_t c) {
+  float px[10], py[10];
+  for (int i = 0; i < 10; i++) {
+    float a = -1.5708f + i * 0.6283f, rr = (i & 1) ? r * 0.42f : r;
+    px[i] = cx + cosf(a) * rr; py[i] = cy + sinf(a) * rr;
+  }
+  for (int i = 0; i < 10; i++) lcd.fillTriangle(cx, cy, px[i], py[i], px[(i + 1) % 10], py[(i + 1) % 10], c);
+}
+static void drawRowIcon(const Ent &e, int x, int yc) {
+  switch (e.kind) {
+    case K_DIR: drawFolderIcon(x, yc - 9, C_BRONZE); break;
+    case K_VFAV: drawStar(x + 8, yc, 8, C_ACCENT); break;
+    case K_VRECENT:   // clock
+      lcd.drawCircle(x + 8, yc, 7, C_ACCENT);
+      lcd.drawFastVLine(x + 8, yc - 4, 5, C_ACCENT);
+      lcd.drawLine(x + 8, yc, x + 11, yc + 2, C_ACCENT);
+      break;
+    case K_VMOST:     // bars
+      for (int i = 0; i < 3; i++) lcd.fillRect(x + 2 + i * 5, yc + 6 - (i + 1) * 4, 4, (i + 1) * 4, C_ACCENT);
+      break;
+    case K_CONT:      // play
+      lcd.fillTriangle(x + 3, yc - 7, x + 3, yc + 7, x + 15, yc, C_GREEN);
+      break;
+  }
+}
 static uint16_t browserFg(Ent &e) {
-  return e.kind == K_DIR ? C_TEXT
+  return e.kind == K_DIR || e.kind >= K_CONT ? C_TEXT
        : e.kind == K_NES ? RGB565(0xE0, 0xA8, 0xA0)
        : isCgbName(e.name) ? C_TEXT : RGB565(0xD2, 0xBE, 0x96);
 }
@@ -4249,12 +4443,13 @@ static void drawBrowserRow(int idx, bool scroll) {
     return;
   }
   int tx = 10;
-  if (e.kind == K_DIR) { drawFolderIcon(10, yc - 9, C_BRONZE); tx = 32; }
+  if (iconRow(e)) { drawRowIcon(e, 10, yc); tx = 32; }
   String tag = browserTag(e);
   lcd.setTextColor(C_DIM, bg);
   lcd.setTextDatum(middle_right);
-  lcd.drawString(tag, SCR_W - (e.kind == K_DIR ? 12 : 10), yc);
+  lcd.drawString(tag, SCR_W - (tag == ">" ? 12 : 10), yc);
   int nx1 = SCR_W - 10 - lcd.textWidth(tag) - 10;
+  if (e.fav) { drawStar(nx1 - 4, yc, 5, C_ACCENT); nx1 -= 14; }   // a favorite
   String n = browserName(e);
   uint16_t fg = browserFg(e);
   lcd.setTextDatum(middle_left);
@@ -4303,8 +4498,8 @@ static void browserMarqueeRotate() {
     if (idx >= (int)roms.size() || idx == prev) continue;
     Ent &e = roms[idx];
     if (e.kind == K_UP || e.kind == K_MORE) continue;
-    int tx = e.kind == K_DIR ? 32 : 10;
-    int nx1 = SCR_W - 10 - lcd.textWidth(browserTag(e)) - 10;
+    int tx = iconRow(e) ? 32 : 10;
+    int nx1 = SCR_W - 10 - lcd.textWidth(browserTag(e)) - 10 - (e.fav ? 14 : 0);
     if (lcd.textWidth(browserName(e)) <= nx1 - tx) continue;
     lcd.startWrite();
     if (prev >= 0) drawBrowserRow(prev, false);   // back to its "~" form
@@ -4440,6 +4635,8 @@ static int runBrowserLoop() {
   if (curDir == rootDir) {
     // main menu: name and version
     snprintf(title, sizeof title, APP_NAME " v" APP_VERSION);
+  } else if (isVirtualDir(curDir)) {
+    snprintf(title, sizeof title, "%s", curDir.c_str() + 2);   // Favorites / Recent / Most played
   } else {
     // inside a folder: its path below the games root, e.g. "GBC / RPG"
     String rel = curDir.substring(rootDir == "/" ? 1 : rootDir.length() + 1);
@@ -4528,15 +4725,27 @@ static int runBrowserLoop() {
     browserByPad = false;
     int sx = x, sy = y, moved = 0;
     int topAtStart = browserTop;
+    uint32_t pressT0 = millis();
+    bool held = false;
     while (readTouch(x, y)) {
       moved = max(moved, abs(y - sy));
+      // hold a game for half a second: mark or unmark it as a favorite
+      if (!held && moved <= 10 && sy >= y0 && sdOk && millis() - pressT0 > 500) {
+        held = true;
+        int i = browserTop + (sy - y0) / rowH;
+        if (i >= 0 && i < (int)roms.size() && i < browserTop + visible && roms[i].kind <= K_NES) {
+          roms[i].fav = histUpdate(entryPath(roms[i]), HIST_FAV);
+          ledFlash(LED_FLASH_CHEAT);
+          lcd.startWrite(); drawBrowserRow(i, i == browserSel); lcd.endWrite();
+        }
+      }
       if (moved > 10 && !roms.empty() && sy >= y0) {
         int nt = constrain(topAtStart - (y - sy) / (rowH / 2) , 0, max(0, (int)roms.size() - visible));
         if (nt != browserTop) { browserTop = nt; drawBrowser(); }
       }
       delay(15);
     }
-    if (moved > 10) continue;
+    if (moved > 10 || held) continue;
     if (sy < 32) {
       if (sx > SCR_W - 70) return -1;  // settings
       if (azBtn && sx > SCR_W - 108) { int L = azGrid(); if (L >= 0) azJump(L, false); else drawBrowser(); }
@@ -4663,7 +4872,7 @@ void loop() {
   if (sel == -2) { if (!sdOk) sdInit(); if (sdOk) scanRoms(); return; }
   if (sel == -5) { enterDir(parentDir(curDir)); return; }
   if (sel < 0) return;
-  if (roms[sel].kind == K_UP || roms[sel].kind == K_DIR) { enterDir(entryPath(roms[sel])); return; }
+  if (roms[sel].kind == K_UP || roms[sel].kind == K_DIR || roms[sel].kind >= K_VFAV) { enterDir(entryPath(roms[sel])); return; }
   if (roms[sel].kind == K_MORE) {
     lcd.fillScreen(C_BG);
     uiHeader("Folder too big");
@@ -4674,8 +4883,16 @@ void loop() {
   // Free the folder list while playing (it can be tens of KB with a big folder),
   // then read it back from the SD card when the game ends.
   RomEntry r = { entryPath(roms[sel]), roms[sel].size, roms[sel].kind };
+  if (r.kind == K_CONT) { r.kind = (uint8_t)romKind(r.path.c_str()); r.size = SIZE_UNKNOWN; }
+  if (isVirtualDir(curDir)) r.size = SIZE_UNKNOWN;
   clearList();
+  // Recent / Continue / Most played: mark it before the game starts (no extra file open
+  // while the game needs its RAM) and add the time played once it ends
+  curGamePath = r.path;
+  if (sdOk) histUpdate(r.path, HIST_START);
+  uint32_t playT0 = millis();
   if (r.kind == K_NES) runNes(r); else runGame(r);
+  if (sdOk) histUpdate(r.path, HIST_TIME, (millis() - playT0) / 1000);
   lcd.fillScreen(C_BG);
   uiHeader(APP_NAME " v" APP_VERSION);
   uiMessage("Reading SD card...");
