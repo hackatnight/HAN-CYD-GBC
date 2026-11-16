@@ -9,6 +9,7 @@
 #include "mem.h"
 #include "lcd.h"
 #include "rc.h"
+#include "patexp.h"
 #include "fb.h"
 #ifdef USE_ASM
 #include "asm.h"
@@ -97,68 +98,19 @@ void lcd_snap_reset() { }
 
 static byte pix[8];
 
-__attribute__((optimize("unroll-loops")))
+/* One row of a tile as 8 pixels, colors 0-3. Bit 10 of i mirrors it left-right, bit 11
+ * flips it top-bottom. The two bytes of the row hold one bit of each pixel each; the
+ * tables in patexp.h spread a byte into 8 bytes, so the whole row is two lookups and an
+ * OR instead of a loop over the 8 bits. (Both targets are little-endian.) */
 static const byte* IRAM_ATTR get_patpix(int i, int x)
 {
-	const int index = i & 0x3ff; // 1024 entries
-	const int rotation = i >> 10; // / 1024;
-
-	int j;
-	int a, c;
 	const byte* const vram = lcd.vbank[0];
-
-	switch (rotation)
-	{
-		case 0:
-			a = ((index << 4) | (x << 1));
-
-			for (byte k = 0; k < 8; k++)
-			{
-				c = vram[a] & (1 << k) ? 1 : 0;
-				c |= vram[a+1] & (1 << k) ? 2 : 0;
-				pix[7 - k] = c;
-			}
-			break;
-
-		case 1:
-			a = ((index << 4) | (x << 1));
-
-			for (byte k = 0; k < 8; k++)
-			{
-				c = vram[a] & (1 << k) ? 1 : 0;
-				c |= vram[a+1] & (1 << k) ? 2 : 0;
-				pix[k] = c;
-			}
-			break;
-
-		case 2:
-			j = 7 - x;
-			a = ((index << 4) | (j << 1));
-
-			for (byte k = 0; k < 8; k++)
-			{
-				c = vram[a] & (1 << k) ? 1 : 0;
-				c |= vram[a+1] & (1 << k) ? 2 : 0;
-				pix[7 - k] = c;
-			}
-			break;
-
-		case 3:
-			j = 7 - x;
-			a = ((index << 4) | (j << 1));
-
-			for (byte k = 0; k < 8; k++)
-			{
-				c = vram[a] & (1 << k) ? 1 : 0;
-				c |= vram[a+1] & (1 << k) ? 2 : 0;
-				pix[k] = c;
-			}
-			break;
-	}
-
+	const int a = ((i & 0x3ff) << 4) | (((i & 0x800) ? 7 - x : x) << 1);
+	const uint64_t *t = (i & 0x400) ? PATEXP_M : PATEXP_N;
+	const uint64_t row = t[vram[a]] | (t[vram[a + 1]] << 1);
+	memcpy(pix, &row, 8);
 	return pix;
 }
-
 
 #ifndef ASM_UPDATEPATPIX
 inline void updatepatpix()

@@ -13,3 +13,4 @@
   (build lines at the top of each file).
 - `release_check.py` – run before pushing a release: fails if the page header, a manifest, a firmware image
   or the demo zip doesn't match the version in `src/main.cpp`.
+- `gen_patexp.py` – writes `src/gnuboy/patexp.h`, the tile-row lookup tables used by the Game Boy renderer.

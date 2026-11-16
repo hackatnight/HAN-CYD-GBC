@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.1"
+#define APP_VERSION "2.19.2"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3202,6 +3202,7 @@ static void pairScreen() {
   line("PS5: hold CREATE + PS");
   line("Xbox: hold the pair button");
   line("Switch: hold the sync button");
+  line("Stadia: hold Stadia + Y");
   line("Others: see the manual", C_DIM);
   uint32_t t0 = millis();
   bool done = false;
