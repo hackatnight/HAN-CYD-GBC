@@ -44,7 +44,7 @@ and a one-click web flasher.
 | Board | Hardware | Display | Touch | PS4 controller | Other controllers | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟡 | ❌ | ✅ | ✅ |
+| **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually), XPT2046 resistive, two USB ports | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
