@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.5"
+#define APP_VERSION "2.19.6"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -4286,7 +4286,10 @@ static void runGame(const RomEntry &r) {
       gb_ring_alloc(144);
     Serial.printf("Display ring: %d lines\n", gb_ring_lines);
   }
-  if (memOk) memOk = streaming ? setupCartRam(1, 0) : setupCartRam(32, PLAY_RESERVE);
+  // Cartridge RAM is touched far more often than any one ROM page, and a game whose save
+  // RAM does not fit swaps 4 KB to the card on every hop between its halves - which is far
+  // worse than losing two ROM pages. Keep it all resident (8 pages covers up to 32 KB).
+  if (memOk) memOk = streaming ? setupCartRam(8, 0) : setupCartRam(32, PLAY_RESERVE);
   if (memOk && streaming) {
     const size_t RESERVE = PLAY_RESERVE;
     size_t freeB = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -4338,7 +4341,7 @@ static void runGame(const RomEntry &r) {
   int64_t fpsT0 = next;
   unsigned gbLastWrites = gb_sram_writes;
   int gbDirtyChecks = 0;
-  unsigned lastRomFaults = gb_rom_faults;
+  unsigned lastRomFaults = gb_rom_faults + gb_sram_faults;
 
   while (true) {
     // ---- input ----
@@ -4439,8 +4442,9 @@ static void runGame(const RomEntry &r) {
     if (now - fpsT0 >= 1000000) {
       fpsValue = (int)drawn;
       emuFps = (int)frames;
-      sdPerSec = streaming ? (int)(gb_rom_faults - lastRomFaults) : -1;
-      lastRomFaults = gb_rom_faults;
+      // every page fetched from the card: ROM banks and cartridge-RAM swaps alike
+      sdPerSec = streaming ? (int)(gb_rom_faults + gb_sram_faults - lastRomFaults) : -1;
+      lastRomFaults = gb_rom_faults + gb_sram_faults;
       fpsUpdate(fpsValue, emuFps);
       drawn = 0;
       frames = 0;

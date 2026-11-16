@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-2432S028C (2.8\", capacitive touch)",
-  "version": "2.19.5",
+  "version": "2.19.6",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32", "parts": [ { "path": "HAN-CYD-GBC-2432S028C.bin", "offset": 0 } ] }

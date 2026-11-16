@@ -16,3 +16,4 @@
 - `gen_patexp.py` – writes `src/gnuboy/patexp.h`, the tile-row lookup tables used by the Game Boy renderer.
 - `hosttest/palstress.c` – runs a ROM against a deliberately slow, uneven display and fails if the emulator
   has to hold colour changes back; catches stalls between the emulator and the display task.
+- `hosttest/sramtest.c` – counts cartridge-RAM swaps to the SD card for a given number of resident pages.
