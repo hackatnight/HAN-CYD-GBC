@@ -12,3 +12,5 @@ code += grab('// Works out the calibration from the raw readings', 'static void 
 open('touch.inc', 'w').write(code)
 PY
 for R in 1 0; do g++ -std=c++17 -O1 -DTOUCH_RESISTIVE=$R -o t$R test.cpp && ./t$R; done
+echo "3.5\" board (240x320 window on a 320x480 touch layer):"
+for R in 1 0; do g++ -std=c++17 -O1 -DBIG=1 -DTOUCH_RESISTIVE=$R -o tb$R test.cpp && ./tb$R; done

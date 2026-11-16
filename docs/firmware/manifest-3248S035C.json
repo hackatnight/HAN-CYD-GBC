@@ -1,0 +1,16 @@
+{
+  "name": "H@N-CYD-GBC for the ESP32-3248S035C (3.5\", capacitive touch)",
+  "version": "2.14.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "HAN-CYD-GBC-3248S035C.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

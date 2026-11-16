@@ -47,39 +47,86 @@
 //   BOARD_CYD2USB 2.8" with two USB ports: as BOARD_028R, but most have an ST7789 screen
 //                 whose colors come out inverted
 //   BOARD_028C    2.8" ESP32-2432S028C: capacitive touch (CST820 or GT911, found at start)
-// All are the original ESP32 (4 MB flash, no PSRAM), 240x320, same SD card, speaker
-// (GPIO26), RGB LED (4/16/17) and BOOT button.
+//   BOARD_032R    3.2" ESP32-2432S032R: ST7789 screen, resistive XPT2046 on the screen's bus
+//   BOARD_032C    3.2" ESP32-2432S032C: ST7789 screen, capacitive GT911
+//   BOARD_035R    3.5" ESP32-3248S035R: 320x480 ST7796 screen, resistive XPT2046 on its bus
+//   BOARD_035C    3.5" ESP32-3248S035C: 320x480 ST7796 screen, capacitive GT911
+// All are the original ESP32 (4 MB flash, no PSRAM), same SD card, speaker (GPIO26),
+// RGB LED (4/16/17) and BOOT button. All but the 3.5" are 240x320; the 3.5" shows the
+// same 240x320 picture in the middle of its screen.
 // ----------------------------------------------------------------------------
 // #define BOARD_024R
 // #define BOARD_028R
 // #define BOARD_CYD2USB
 // #define BOARD_028C
+// #define BOARD_032R
+// #define BOARD_032C
+// #define BOARD_035R
+// #define BOARD_035C
 #define TOUCH_CST     0   // CST820 on I2C (2.4" C)
 #define TOUCH_XPT_OWN 1   // XPT2046 on its own pins, software SPI (2.8" R, CYD2USB)
-#define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R)
-#define TOUCH_I2C_ANY 3   // CST820 or GT911 on I2C, whichever answers (2.8" C)
+#define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R, 3.2" R, 3.5" R)
+#define TOUCH_I2C_ANY 3   // CST820 or GT911 on I2C, whichever answers (2.8" C, 3.2" C, 3.5" C)
+// PANEL_CHOICE: the board ships with an ILI9341 or an ST7789 ("Screen chip" setting).
+// PANEL_BIG: 320x480 ST7796 (3.5"). BL_PIN: backlight.
 #if defined(BOARD_CYD2USB)
 #define BOARD_NAME "ESP32-2432S028-2USB"
 #define TOUCH_KIND TOUCH_XPT_OWN
-#define BOARD_IS_28 1
+#define PANEL_CHOICE 1
 #define DEFAULT_PANEL 1    // ST7789
 #define DEFAULT_INVERT 1
+#define BL_PIN 21
 #elif defined(BOARD_028R)
 #define BOARD_NAME "ESP32-2432S028R"
 #define TOUCH_KIND TOUCH_XPT_OWN
-#define BOARD_IS_28 1
+#define PANEL_CHOICE 1
+#define BL_PIN 21
 #elif defined(BOARD_028C)
 #define BOARD_NAME "ESP32-2432S028C"
 #define TOUCH_KIND TOUCH_I2C_ANY
-#define BOARD_IS_28 1
+#define PANEL_CHOICE 1
+#define BL_PIN 21
+#define TP_INT_PIN -1      // GPIO21 is the backlight on this board: touch is polled
+#elif defined(BOARD_032R)
+#define BOARD_NAME "ESP32-2432S032R"
+#define TOUCH_KIND TOUCH_XPT_BUS
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789 (IPS)
+#define DEFAULT_INVERT 1
+#define BL_PIN 27
+#elif defined(BOARD_032C)
+#define BOARD_NAME "ESP32-2432S032C"
+#define TOUCH_KIND TOUCH_I2C_ANY
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789 (IPS)
+#define DEFAULT_INVERT 1
+#define BL_PIN 27
+#define TP_INT_PIN 21
+#elif defined(BOARD_035R)
+#define BOARD_NAME "ESP32-3248S035R"
+#define TOUCH_KIND TOUCH_XPT_BUS
+#define PANEL_BIG 1
+#define BL_PIN 27
+#elif defined(BOARD_035C)
+#define BOARD_NAME "ESP32-3248S035C"
+#define TOUCH_KIND TOUCH_I2C_ANY
+#define PANEL_BIG 1
+#define BL_PIN 27
+#define TP_INT_PIN 21
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
 #define TOUCH_KIND TOUCH_XPT_BUS
-#define BOARD_IS_28 0
+#define BL_PIN 27
 #else
 #define BOARD_NAME "ESP32-2432S024C"
 #define TOUCH_KIND TOUCH_CST
-#define BOARD_IS_28 0
+#define BL_PIN 27
+#endif
+#ifndef PANEL_CHOICE
+#define PANEL_CHOICE 0
+#endif
+#ifndef PANEL_BIG
+#define PANEL_BIG 0
 #endif
 #define TOUCH_RESISTIVE (TOUCH_KIND == TOUCH_XPT_OWN || TOUCH_KIND == TOUCH_XPT_BUS)
 // Ask for a touch calibration at the first start (where the touch layer isn't known to
@@ -101,18 +148,14 @@
 
 // ----------------------------------------------------------------------------
 // Board pins. Display, SD card, speaker (GPIO26), RGB LED (4/16/17) and BOOT are the same
-// on every board. The backlight is on 27 (2.4") or 21 (2.8").
+// on every board. The backlight is on 27 (2.4", 3.2", 3.5") or 21 (2.8").
 // ----------------------------------------------------------------------------
 #define PIN_LCD_SCLK 14
 #define PIN_LCD_MOSI 13
 #define PIN_LCD_MISO 12
 #define PIN_LCD_DC    2
 #define PIN_LCD_CS   15
-#if BOARD_IS_28
-#define PIN_LCD_BL   21
-#else
-#define PIN_LCD_BL   27
-#endif
+#define PIN_LCD_BL   BL_PIN
 #if TOUCH_KIND == TOUCH_XPT_OWN
 #define PIN_TP_SCLK  25
 #define PIN_TP_MOSI  32
@@ -126,7 +169,7 @@
 #define PIN_TP_SDA   33
 #define PIN_TP_SCL   32
 #define PIN_TP_RST   25
-#define PIN_TP_INT   -1   // GPIO21 is the backlight on this board: touch is polled
+#define PIN_TP_INT   TP_INT_PIN
 #else
 #define PIN_TP_SDA   33
 #define PIN_TP_SCL   32
@@ -140,7 +183,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.13.0"
+#define APP_VERSION "2.14.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -159,9 +202,13 @@ static int SCR_H = 320;
 // ----------------------------------------------------------------------------
 class LGFX : public lgfx::LGFX_Device {
 public:
+#if PANEL_BIG
+  lgfx::Panel_ST7796 panel;    // 3.5": 320x480, the game and menus use a 240x320 window in the middle
+#else
   lgfx::Panel_ILI9341 panel;
-#if BOARD_IS_28
-  lgfx::Panel_ST7789 panel2;   // 2.8" boards: many (all "CYD2USB") use this chip instead
+#endif
+#if PANEL_CHOICE
+  lgfx::Panel_ST7789 panel2;   // 2.8" boards: many (all "CYD2USB") use this chip instead; 3.2" all do
 #endif
   lgfx::Bus_SPI bus;
   lgfx::Light_PWM light;
@@ -171,7 +218,7 @@ public:
   lgfx::Touch_CST816S touch;   // CST820
 #endif
 #if TOUCH_KIND == TOUCH_I2C_ANY
-  lgfx::Touch_GT911 touchGt;   // the other chip 2.8" capacitive boards come with
+  lgfx::Touch_GT911 touchGt;   // 3.2" / 3.5" C, and some 2.8" C
 #endif
 
   LGFX() {
@@ -206,6 +253,12 @@ public:
       c.rgb_order = false;
       c.dlen_16bit = false;
       c.bus_shared = false;
+#if PANEL_BIG
+      c.memory_width = 320;      // centered 240x320 window
+      c.memory_height = 480;
+      c.offset_x = (320 - 240) / 2;
+      c.offset_y = (480 - 320) / 2;
+#endif
       p.config(c);
       p.setLight(&light);
       p.setTouch(&touch);
@@ -264,9 +317,9 @@ public:
 #if TOUCH_KIND == TOUCH_I2C_ANY
     {
       auto c = touchGt.config();
-      c.x_min = 0; c.x_max = 239;
-      c.y_min = 0; c.y_max = 319;
-      c.pin_int = -1;
+      c.x_min = 0; c.x_max = PANEL_BIG ? 319 : 239;
+      c.y_min = 0; c.y_max = PANEL_BIG ? 479 : 319;
+      c.pin_int = PIN_TP_INT;
       c.pin_rst = PIN_TP_RST;
       c.bus_shared = false;
       c.offset_rotation = 0;
@@ -279,35 +332,52 @@ public:
     }
 #endif
     setupPanel(panel);
-#if BOARD_IS_28
+#if PANEL_CHOICE
     setupPanel(panel2);
 #endif
     setPanel(&panel);
   }
-  // 0 = ILI9341, 1 = ST7789 (2.8" boards only); takes effect at the next init()
+  // 0 = ILI9341, 1 = ST7789 (2.8" / 3.2" boards only); takes effect at the next init()
   void selectPanel(int t) {
-#if BOARD_IS_28
+#if PANEL_CHOICE
     if (t) { setPanel(&panel2); return; }
 #endif
     setPanel(&panel);
   }
   void setRgbOrder(bool rgb) {
     auto c = panel.config(); c.rgb_order = rgb; panel.config(c);
-#if BOARD_IS_28
+#if PANEL_CHOICE
     auto d = panel2.config(); d.rgb_order = rgb; panel2.config(d);
 #endif
   }
-  // 2.8" capacitive: use the GT911 if one answers, else the CST820. Returns the chip name.
+  // Capacitive boards other than the 2.4" C: use the GT911 if one answers, else the
+  // CST820. Returns the chip name.
   const char *detectTouch() {
 #if TOUCH_KIND == TOUCH_I2C_ANY
     if (touchGt.init()) {
       panel.setTouch(&touchGt);
+#if PANEL_CHOICE
       panel2.setTouch(&touchGt);
+#endif
       return "GT911";
     }
     return "CST820";
 #else
     return "";
+#endif
+  }
+  // 3.5": black out the whole 320x480 screen (the edges around the 240x320 window
+  // otherwise show whatever was there at power-on). Call after init().
+  void clearWholeScreen() {
+#if PANEL_BIG
+    auto keep = panel.config();
+    auto c = keep;
+    c.panel_width = 320; c.panel_height = 480; c.offset_x = 0; c.offset_y = 0;
+    panel.config(c);
+    setRotation(0);
+    fillScreen(0);
+    panel.config(keep);
+    setRotation(0);
 #endif
   }
 };
@@ -327,7 +397,7 @@ struct Settings {
   uint8_t touchPad = 0;    // on-screen controls: 0 = auto (hide with a controller), 1 = always, 2 = never
   uint8_t mirrorFix = 0;   // drop the X mirror if the image is mirrored
   uint8_t invert = DEFAULT_INVERT;
-  uint8_t panelType = DEFAULT_PANEL;   // screen chip on 2.8" boards: 0 = ILI9341, 1 = ST7789
+  uint8_t panelType = DEFAULT_PANEL;   // screen chip on 2.8" / 3.2" boards: 0 = ILI9341, 1 = ST7789
   uint8_t swapRB = 0;
   uint8_t touchFlipX = 0;
   uint8_t touchFlipY = 0;
@@ -442,6 +512,7 @@ static void applyDisplaySettings(bool reinit) {
     lcd.selectPanel(cfg.panelType);
     lcd.setRgbOrder(cfg.swapRB);
     lcd.init();
+    lcd.clearWholeScreen();
   }
 #if !HAVE_BT
   if (cfg.rotation & 1) cfg.rotation = 2;   // landscape needs a controller
@@ -2877,7 +2948,7 @@ static void displayTouchMenu() {
       { "Mirror fix", cfg.mirrorFix ? "On" : "Off" },
       { "Invert colors", cfg.invert ? "On" : "Off" },
       { "Swap red/blue", cfg.swapRB ? "On" : "Off" },
-#if BOARD_IS_28
+#if PANEL_CHOICE
       { "Screen chip", cfg.panelType ? "ST7789" : "ILI9341" },   // if the colors or picture look wrong
 #endif
     };
@@ -5012,9 +5083,10 @@ void setup() {
   ledInit();
 
   lcd.selectPanel(cfg.panelType);
-  const char *touchChip = lcd.detectTouch();   // 2.8" capacitive: GT911 or CST820
+  const char *touchChip = lcd.detectTouch();   // 2.8" / 3.2" / 3.5" capacitive: GT911 or CST820
   lcd.setRgbOrder(cfg.swapRB);
   lcd.init();
+  lcd.clearWholeScreen();
   if (*touchChip) Serial.printf("Touch: %s\n", touchChip);
   applyDisplaySettings(false);
   lcd.fillScreen(C_BG);

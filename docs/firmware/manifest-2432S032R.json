@@ -1,0 +1,16 @@
+{
+  "name": "H@N-CYD-GBC for the ESP32-2432S032R (3.2\", resistive touch)",
+  "version": "2.14.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "HAN-CYD-GBC-2432S032R.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

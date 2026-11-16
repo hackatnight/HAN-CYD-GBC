@@ -7,16 +7,27 @@ struct { uint8_t rotation = 2, calValid = 0, calSwap = 0, touchFlipX = 0, touchF
 #include "touch.inc"
 // A simulated touch layer: panel pixel -> raw reading, in one of 8 wirings.
 struct Wiring { bool swap, fx, fy; float scale, off; };
+// BIG=1: the 3.5" board. The touch layer covers the whole 320x480 screen and the firmware
+// uses the 240x320 window in its middle (40 px in from the sides, 80 from the ends).
+#ifndef BIG
+#define BIG 0
+#endif
 static void raw(const Wiring &w, float px, float py, float &rx, float &ry, float noise) {
+#if BIG
+  px += 40; py += 80;
+  float u = w.fx ? 319 - px : px, v = w.fy ? 479 - py : py;
+  float a = w.off + u * w.scale, b = w.off + v * w.scale * (TOUCH_RESISTIVE ? 0.62f : 1.0f);  // 4096 over 480 px
+#else
   float u = w.fx ? 239 - px : px, v = w.fy ? 319 - py : py;
   float a = w.off + u * w.scale, b = w.off + v * w.scale * 0.92f;   // y a bit less sensitive, like real panels
+#endif
   a += (rand() % 1000 / 500.0f - 1) * noise; b += (rand() % 1000 / 500.0f - 1) * noise;
   if (w.swap) { rx = b; ry = a; } else { rx = a; ry = b; }
 }
 int main() {
   srand(7);
   const bool R = TOUCH_RESISTIVE;
-  const float scale = R ? 14.5f : 1.0f, off = R ? 250 : 0, noise = R ? 12 : 1;   // resistive: 0..4095 readings with jitter
+  const float scale = R ? (BIG ? 11.2f : 14.5f) : 1.0f, off = R ? 250 : 0, noise = R ? 12 : 1;   // resistive: 0..4095 readings with jitter
   int fails = 0, cases = 0; float worst = 0;
   for (int wi = 0; wi < 8; wi++) {
     Wiring w = { bool(wi & 4), bool(wi & 2), bool(wi & 1), scale, off };

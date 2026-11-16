@@ -1,15 +1,15 @@
 # H@N-CYD-GBC
 
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
-the 2.4" ESP32-2432S024C and ESP32-2432S024R, and the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
-"CYD2USB"**, with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
+the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
+"CYD2USB", the 3.2" ESP32-2432S032C and ESP32-2432S032R, and the 3.5" ESP32-3248S035C and ESP32-3248S035R**, with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
 
 > [!WARNING]
 > **Use the build for your exact board** (see [Supported boards](#supported-boards)). Other "CYD"
-> boards (ESP32-S3 boards, the 3.5" ESP32-3248S035, the 3.2" ESP32-2432S032...) use different chips,
+> boards (ESP32-S3 boards, the 4.3" ESP32-8048S043, the 2.2" ESP32-2432S022...) use different chips,
 > screens or pins. The firmware won't work on them and will most likely show a
 > blank screen.
 
@@ -39,24 +39,39 @@ and a one-click web flasher.
 
 ## Supported boards
 
-| Board | Screen / touch | Status | Builds |
-|---|---|---|---|
-| **ESP32-2432S024C** | 2.4" ILI9341, CST820 **capacitive** touch | Main board, tested daily | Bluetooth (PS4), Touch-only |
-| **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 **resistive** touch (on the screen's SPI bus) | **New in 2.13.0: needs testers** | Bluetooth (PS4) with touch |
-| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 **resistive** touch, one micro-USB port (the original "Cheap Yellow Display") | **New in 2.11.0: needs testers** | Bluetooth (PS4) with touch |
-| **ESP32-2432S028 "CYD2USB"** | Same 2.8" board with **two USB ports** (micro-USB + USB-C), usually an ST7789 screen | **New in 2.12.0: needs testers** | Bluetooth (PS4) with touch |
-| **ESP32-2432S028C** | 2.8" ILI9341, **capacitive** touch (CST820 or GT911: the firmware finds which at start) | **New in 2.13.0: needs testers** | Bluetooth (PS4) with touch |
+| Board | Hardware | Display | Touch | PS4 Bluetooth | BLE pads | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ |
+| **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟡 | ❌ | ✅ | ✅ |
+| **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually), XPT2046 resistive, two USB ports | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S028C** | 2.8" ILI9341, CST820 or GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S032R** | 3.2" ST7789 IPS, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-2432S032C** | 3.2" ST7789 IPS, GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **ESP32-3248S035R** | 3.5" ST7796 320×480, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| **ESP32-3248S035C** | 3.5" ST7796 320×480, GT911 capacitive | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 
-All of them are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM) at 240×320, with a microSD slot, a
-speaker connector and an RGB LED, so every feature works on every board. They differ only in the backlight pin
-(27 on 2.4", 21 on 2.8"), the touch chip and, on some 2.8" boards, the screen chip.
+✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
+
+- **Landscape** needs a controller, so the touch-only build stays in portrait.
+- **BLE pads** (Xbox, Switch Pro, 8BitDo in BLE mode) aren't supported yet; only the PS4 controller (Bluetooth Classic) is.
+- **Fills screen:** the 3.5" boards have a 320×480 screen. For now they show the same 240×320 picture in the
+  middle, with a black border. A full-screen layout for them is planned once someone confirms the board works.
+- Tried a board? **[Send a board test report](https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md)**
+  and the table gets updated.
+
+All of them are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM), with a microSD slot, a speaker
+connector and an RGB LED, so every feature works on every board. They differ in the backlight pin (21 on 2.8",
+27 on the others), the touch chip and the screen chip.
 
 **Which build?** Check the model number on the back of the board.
 - **2.4":** the last letter is the touch type: **C** = capacitive (your fingertip), **R** = resistive (press firmly).
 - **2.8":** **R** with one micro-USB port, the **CYD2USB** with two ports, or **C** (capacitive; its touch ribbon
   has 6 wires instead of 4).
+- **3.2" (ESP32-2432S032) and 3.5" (ESP32-3248S035):** again **C** = capacitive, **R** = resistive.
 
-### Testing the new builds (2.4" R, 2.8" R, CYD2USB, 2.8" C)
+### Testing the new builds (everything but the 2.4" C)
 
 These builds have passed every check I could run without the boards in hand, but nobody has run them on a real
 board yet. If you have one, please try it and
@@ -69,14 +84,19 @@ The checks run so far:
 - On the 2.4" R, the touch chip shares the screen's connection. Touch reads wait for the screen to finish drawing,
   so the two never talk over each other.
 - On the 2.8" C, the firmware checks at start whether a GT911 answers, and otherwise uses the CST820. The serial
-  log says which.
+  log says which. The 3.2" C and 3.5" C do the same (they normally have a GT911).
+- On the 3.2" R and 3.5" R, the touch chip shares the screen's connection, like on the 2.4" R.
+- On the 3.5", the screen is set up as a 240×320 window in the middle of its 320×480 panel, and the rest is
+  cleared to black at start.
 - [`tools/touchtest`](tools/touchtest) runs the firmware's touch calibration against simulated resistive panels, in
   all 8 ways the touch layer can be wired and all 4 screen orientations. Taps land within 1.4 px, and a bad
-  calibration is always refused.
+  calibration is always refused. It also covers the 3.5" case, where the touch layer spans the whole screen but
+  the picture uses only the middle (taps land within 2.4 px).
 
 What to expect:
 1. **First start:** after the boot animation, it asks you to **tap four crosses** to calibrate the touch screen.
-   A resistive screen needs this once; it's saved after that. The 2.8" C asks too, because its touch chip varies.
+   A resistive screen needs this once; it's saved after that. The 2.8", 3.2" and 3.5" C boards ask too, because
+   their touch chip varies (and on the 3.5" the picture doesn't start at the touch layer's corner).
    *Setup → Display & touch → Calibrate touch* redoes it.
 2. **It starts in portrait** with on-screen buttons, so it can be played by touch right away. If the picture is
    upside down, **hold BOOT for 1 second** on the game list to rotate it. Pair a PS4 controller to play in
@@ -86,6 +106,9 @@ What to expect:
 **Which 2.8" build?** Count the USB ports.
 - **One** micro-USB port: the **ESP32-2432S028R** build.
 - **Two** ports (micro-USB and USB-C): the **CYD2USB** build.
+
+The 3.2" boards use an ST7789 IPS screen, so their builds start with ST7789 and inverted colors and have the same
+**Screen chip** switch. If the colors look wrong, use **Invert colors** and **Swap red/blue** in the same menu.
 
 The two-USB board is the same board with a different screen chip on most units: an ST7789 instead of an ILI9341,
 with colors that come out inverted. Not every unit is the same, so both 2.8" builds have a
@@ -135,8 +158,9 @@ Steps:
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
 
    On any **other board**, use the build with its model number: **ESP32-2432S024R**, **ESP32-2432S028R** (one USB
-   port), **CYD2USB** (two USB ports) or **ESP32-2432S028C**. Each has touch and Bluetooth, and 2.9 MB for games.
-   See [Testing the new builds](#testing-the-new-builds-24-r-28-r-cyd2usb-28-c).
+   port), **CYD2USB** (two USB ports), **ESP32-2432S028C**, **ESP32-2432S032R / C** or **ESP32-3248S035R / C**.
+   Each has touch and Bluetooth, and 2.9 MB for games.
+   See [Testing the new builds](#testing-the-new-builds-everything-but-the-24-c).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
@@ -150,14 +174,14 @@ Steps:
 
 ## Flashing in detail
 
-Both builds are a single **merged image** that goes at address **0x0**. It contains the bootloader, the
+Every build is a single **merged image** that goes at address **0x0**. It contains the bootloader, the
 partition table and the app, so no other files are needed. Flashing a merged image also clears saved settings
 and controller pairings. Your saves are on the SD card and aren't touched.
 
 ### Option 1: web flasher (easiest)
 
 Open **<https://hackatnight.com/HAN-CYD-GBC/>** in Chrome or Edge on a computer. The page uses
-[ESP Web Tools](https://esphome.github.io/esp-web-tools/) and has both builds built in.
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) and has every build built in.
 
 1. Click **Install Bluetooth build** or **Install touch-only build**.
 2. Pick the board in the port list. It's usually *USB-SERIAL CH340* or *CP210x*. If nothing shows up, install the
@@ -183,6 +207,11 @@ esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028-2USB.
 # ESP32-2432S024R (2.4" resistive) / ESP32-2432S028C (2.8" capacitive):
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S024R.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028C.bin
+# 3.2" ESP32-2432S032R / C and 3.5" ESP32-3248S035R / C:
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032R.bin
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032C.bin
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-3248S035R.bin
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-3248S035C.bin
 ```
 
 ### Option 3: Espressif's online tool
@@ -539,9 +568,10 @@ licensed games.
 
 | Problem | Try this |
 |---|---|
-| Blank or white screen after flashing | Make sure you flashed the build for your exact board (model number on the back): ESP32-2432S024C / 024R (2.4"), ESP32-2432S028R / 028C, or CYD2USB (2.8", two USB ports). Other CYD boards aren't supported. |
-| 2.8" board: colors inverted or washed out | *Setup → Display & touch → Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
-| Taps land in the wrong place (2.4" R, 2.8" boards) | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
+| Blank or white screen after flashing | Make sure you flashed the build for your exact board (model number on the back): ESP32-2432S024C / 024R (2.4"), ESP32-2432S028R / 028C, CYD2USB (2.8", two USB ports), ESP32-2432S032R / C (3.2") or ESP32-3248S035R / C (3.5"). Other CYD boards aren't supported. |
+| 2.8" or 3.2" board: colors inverted or washed out | *Setup → Display & touch → Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
+| 3.5" board: colors swapped or picture mirrored | *Setup → Display & touch → Swap red/blue* or *Mirror fix*. |
+| Taps land in the wrong place (any board but the 2.4" C) | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
@@ -568,7 +598,8 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - `partitions.csv` (Bluetooth layout) is picked up automatically.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
-   - For another board, define one of `BOARD_024R`, `BOARD_028R`, `BOARD_CYD2USB` or `BOARD_028C`. Either
+   - For another board, define one of `BOARD_024R`, `BOARD_028R`, `BOARD_CYD2USB`, `BOARD_028C`, `BOARD_032R`,
+     `BOARD_032C`, `BOARD_035R` or `BOARD_035C`. Either
      uncomment the line near the top of `src/main.cpp`, or with arduino-cli add
      `--build-property compiler.cpp.extra_flags=-DBOARD_028R` (for example). Use the Bluetooth partition layout.
 4. To make a single merged image like the ones in `docs/firmware`:

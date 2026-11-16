@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>H@N-CYD-GBC web flasher: Game Boy, GBC and NES for CYD boards ESP32-2432S024C/R, ESP32-2432S028R/C and CYD2USB</title>
-<meta name="description" content="Flash the H@N-CYD-GBC Game Boy, Game Boy Color and NES emulator to an ESP32-2432S024C or ESP32-2432S028R Cheap Yellow Display (CYD) from your browser.">
+<title>H@N-CYD-GBC web flasher: Game Boy, GBC and NES for CYD boards ESP32-2432S024, ESP32-2432S028, CYD2USB, ESP32-2432S032 and ESP32-3248S035</title>
+<meta name="description" content="Flash the H@N-CYD-GBC Game Boy, Game Boy Color and NES emulator to a Cheap Yellow Display (CYD) from your browser: ESP32-2432S024C/R, ESP32-2432S028R/C, CYD2USB, ESP32-2432S032C/R and ESP32-3248S035C/R.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 <style>
   :root {
@@ -56,12 +56,22 @@
   dialog { background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 12px; max-width: 420px; }
   dialog::backdrop { background: rgba(0,0,0,.6); }
   dialog .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .support { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 18px 20px; margin: 0 0 28px; }
+  .support h2 { margin: 0 0 4px; font-size: 22px; }
+  .tablewrap { overflow-x: auto; }
+  table.boards { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table.boards th, table.boards td { padding: 7px 6px; border-top: 1px solid var(--hilite); text-align: center; white-space: nowrap; }
+  table.boards th { color: var(--dim); font-weight: 600; border-top: 0; white-space: normal; font-size: 13px; vertical-align: bottom; }
+  table.boards td:first-child, table.boards th:first-child { text-align: left; }
+  table.boards td small { color: var(--dim); }
+  .y { color: #5fd35f; font-weight: 700; } .n { color: #ff5c5c; font-weight: 700; } .u { color: #e8c35a; font-weight: 700; }
+  .legend { color: var(--dim); font-size: 14px; margin: 10px 0 0; }
 </style>
 </head>
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.13.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.14.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -71,7 +81,8 @@
     ESP32-2432S024C (2.4", capacitive touch) is the main, tested board; the others are new and need testers.
     <strong>2.4":</strong> the last letter says the touch type: C = capacitive, R = resistive.
     <strong>2.8":</strong> R with one micro-USB port, the two-USB "CYD2USB", or C = capacitive (6-wire touch
-    ribbon instead of 4). Other boards won't work. Flashing replaces whatever is on the board now.
+    ribbon instead of 4). <strong>3.2" (ESP32-2432S032) and 3.5" (ESP32-3248S035):</strong> again C = capacitive,
+    R = resistive. Other boards won't work. Flashing replaces whatever is on the board now.
   </div>
 
   <div class="builds">
@@ -159,7 +170,91 @@
         <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
       </esp-web-install-button>
     </div>
+    <div class="card">
+      <h2>3.2" resistive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S032R (3.2", resistive)</p>
+      <ul>
+        <li>Touch + PS4 Bluetooth, starts in portrait</li>
+        <li>Asks you to calibrate the touch screen on first start</li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-2432S032R.json">
+        <button slot="activate">Install 3.2" resistive build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>3.2" capacitive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S032C (3.2", capacitive)</p>
+      <ul>
+        <li>Touch + PS4 Bluetooth, starts in portrait</li>
+        <li>Finds its touch chip (GT911 or CST820) by itself</li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-2432S032C.json">
+        <button slot="activate">Install 3.2" capacitive build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>3.5" resistive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-3248S035R (3.5", resistive)</p>
+      <ul>
+        <li>Touch + PS4 Bluetooth, starts in portrait</li>
+        <li>Shows the 240×320 picture in the middle of the screen for now</li>
+        <li>Asks you to calibrate the touch screen on first start</li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-3248S035R.json">
+        <button slot="activate">Install 3.5" resistive build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>3.5" capacitive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-3248S035C (3.5", capacitive)</p>
+      <ul>
+        <li>Touch + PS4 Bluetooth, starts in portrait</li>
+        <li>Shows the 240×320 picture in the middle of the screen for now</li>
+        <li>Finds its touch chip (GT911 or CST820) by itself</li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-3248S035C.json">
+        <button slot="activate">Install 3.5" capacitive build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
   </div>
+
+  <section class="support" id="boards">
+    <h2>Supported boards</h2>
+    <p class="sub" style="color:var(--dim);margin:0 0 12px">What works on each build, and whether it has been tried on a real board.</p>
+    <div class="tablewrap">
+      <table class="boards">
+        <thead><tr><th>Board</th><th>Display</th><th>Touch</th><th>PS4 Bluetooth</th><th>BLE pads</th><th>Sound</th><th>SD card</th><th>USB transfer</th><th>Landscape</th><th>Fills screen</th><th>Tested on hardware</th></tr></thead>
+        <tbody>
+          <tr><td>ESP32-2432S024C <small>Bluetooth</small></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
+          <tr><td>ESP32-2432S024C <small>touch only</small></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
+          <tr><td>ESP32-2432S024R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028 <small>CYD2USB</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S032R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S032C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-3248S035R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-3248S035C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="legend"><span class="y" title="Works (tested on hardware)">✔</span> works, tested on a real board &nbsp; <span class="u" title="Built in, not tested on hardware yet">?</span> built in, not tested on hardware yet &nbsp; <span class="n" title="Not supported">✘</span> doesn't work / not supported.
+      Landscape needs a controller, so the touch-only build stays in portrait. BLE controllers (Xbox, Switch Pro, 8BitDo in BLE mode)
+      aren't supported yet. The 3.5" boards show the 240×320 picture in the middle of their 320×480 screen for now.
+      Tried one? <a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a> and the table gets updated.</p>
+  </section>
 
   <section class="send" id="send">
     <h2>Send games over USB</h2>
