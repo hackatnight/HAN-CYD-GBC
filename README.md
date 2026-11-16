@@ -113,19 +113,23 @@ bank layout (it assumed CHR-RAM was never banked, which broke MMC1 games).
 - The screen is shown at 1.5x (240x216) with touch controls underneath. Display frames are
   skipped automatically while the game itself keeps running at full speed (60 emulated fps).
 
-## Boot splash (v2.4.0)
+## Boot and loading screens (v2.6.0)
 
-The H@N splash is drawn entirely by code (`src/splash`), with no stored image and no image
-decoder. The letters are signed distance fields computed once into a 33 KB lookup table
-that only exists while the splash runs. Their depth is 30 slices shrinking toward a vanishing
-point below the logo, darker the deeper. The face is chrome, the bevel is lit from the top
-left, stars come from a pixel hash (the same every boot), and the mist is drifting value noise.
+Both draw the H@N logo as a 3D wireframe: the outline in `src/wire/wire_logo.h`
+(made by `tools/wire_logo.py` from DejaVu Sans Bold, 106 points) is extruded and drawn into a
+small 4-bit buffer, then pushed to the screen, so it doesn't flicker.
 
-The logo appears in place (v2.5.0: the fly-in wasn't smooth on the board), "hackatnight.com"
-types itself with a blinking cursor, and a shine sweeps across the chrome. It runs as a task on
-core 0 while the rest of the board starts up, and only the parts that change are redrawn.
-Tap the screen (or press BOOT) to skip it. Landscape and portrait have their own layout.
-`tools/splashtest/host.c` renders the same code on a PC.
+- Boot: stars fly past, the logo spins in from far away, flashes once and rocks gently while
+  "hackatnight.com" types itself. Tap or press BOOT to skip.
+- Loading game (first launch of a game, while it copies to flash): the logo rocks above the
+  game's name and a progress bar.
+
+## Menu themes and animation (v2.6.0)
+
+Setup > Theme: H@N Night (default), Neon, DMG Green, Amber CRT. Themes change only the
+menus. The menus animate while idle: stars in the header, a light along its bronze edge, a
+glowing selected row, and names too long for their row scroll sideways (the selected one,
+or with touch, each cut-off name in turn).
 
 ## Controls
 

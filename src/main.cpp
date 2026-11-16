@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.5.2"
+#define APP_VERSION "2.6.0"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -180,6 +180,7 @@ struct Settings {
   uint8_t dmgPalette = 0;
   uint8_t brightness = 255;
   uint8_t nesPalette = 0;  // see NES_PALETTE_NAMES
+  uint8_t theme = 0;       // menu colors, see THEMES
 };
 static Settings cfg;
 static Preferences prefs;
@@ -208,6 +209,7 @@ static void loadSettings() {
   cfg.dmgPalette = prefs.getUChar("pal", cfg.dmgPalette);
   cfg.brightness = prefs.getUChar("bri", cfg.brightness);
   cfg.nesPalette = prefs.getUChar("npal", cfg.nesPalette) % NES_NUM_PALETTES;
+  cfg.theme = prefs.getUChar("thm", cfg.theme);
   prefs.end();
 }
 
@@ -235,6 +237,7 @@ static void saveSettings() {
   prefs.putUChar("pal", cfg.dmgPalette);
   prefs.putUChar("bri", cfg.brightness);
   prefs.putUChar("npal", cfg.nesPalette);
+  prefs.putUChar("thm", cfg.theme);
   prefs.end();
 }
 
@@ -501,28 +504,184 @@ static bool waitTap(int &x, int &y, uint32_t timeoutMs = 0) {
 // ----------------------------------------------------------------------------
 // UI helpers
 // ----------------------------------------------------------------------------
-// Colors taken from the H@N logo: night sky, gunmetal steel, icy highlight, bronze
 #define RGB565(r, g, b) (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
-#define C_BG     RGB565(0x0E, 0x16, 0x22)   // night sky
-#define C_PANEL  RGB565(0x1D, 0x2A, 0x38)   // dark slate
-#define C_HILITE RGB565(0x34, 0x49, 0x5E)   // selected row
-#define C_ACCENT RGB565(0x86, 0xA8, 0xC4)   // icy steel
-#define C_BRONZE RGB565(0x9A, 0x84, 0x62)   // bronze bevel
-#define C_TEXT   RGB565(0xE4, 0xEC, 0xF2)
-#define C_DIM    RGB565(0x84, 0x94, 0xA5)
+
+// ---- menu themes ----
+// Each theme is 10 colors (0xRRGGBB). Only the menus use them, never the games.
+// H@N Night is taken from the H@N logo: night sky, gunmetal steel, icy highlight, bronze.
+struct ThemeDef {
+  const char *name;
+  uint32_t bg, panel, hilite, accent, bronze, text, dim;
+  uint32_t hdrTop, hdrA, hdrB;   // header bar: top edge, gradient top, gradient bottom
+};
+static const ThemeDef THEMES[] = {
+  { "H@N Night", 0x0E1622, 0x1D2A38, 0x34495E, 0x86A8C4, 0x9A8462, 0xE4ECF2, 0x8494A5, 0xC8D6E2, 0x6A7E92, 0x263444 },
+  { "Neon",      0x0A0618, 0x1A1030, 0x3A185A, 0xFF3CC8, 0x2CE6FF, 0xF4ECFF, 0x9A88B8, 0xFFB0EE, 0x5A2A7A, 0x1E0E34 },
+  { "DMG Green", 0x0F380F, 0x204A20, 0x306230, 0x9BBC0F, 0xB8C858, 0xC8E08C, 0x7A9A40, 0xD0F0A0, 0x4A7A2A, 0x1A3A14 },
+  { "Amber CRT", 0x140A02, 0x261606, 0x4A2A08, 0xFFA830, 0xC07010, 0xFFD898, 0xA88050, 0xFFE0B0, 0x7A4A14, 0x2A1606 },
+};
+#define NUM_THEMES (int)(sizeof THEMES / sizeof THEMES[0])
+struct ThemeColors { uint16_t bg, panel, hilite, accent, bronze, text, dim; };
+static ThemeColors tc;
+static inline uint16_t hex565(uint32_t c) { return RGB565(c >> 16, (c >> 8) & 0xFF, c & 0xFF); }
+// a..b at t/255, colors as 0xRRGGBB
+static inline uint16_t mixHex(uint32_t a, uint32_t b, int t) {
+  int r = ((a >> 16) * (255 - t) + (b >> 16) * t) / 255;
+  int g = (((a >> 8) & 0xFF) * (255 - t) + ((b >> 8) & 0xFF) * t) / 255;
+  int bl = ((a & 0xFF) * (255 - t) + (b & 0xFF) * t) / 255;
+  return RGB565(r, g, bl);
+}
+static const ThemeDef &theme() { return THEMES[cfg.theme % NUM_THEMES]; }
+static void applyTheme() {
+  const ThemeDef &t = theme();
+  tc = { hex565(t.bg), hex565(t.panel), hex565(t.hilite), hex565(t.accent), hex565(t.bronze), hex565(t.text), hex565(t.dim) };
+}
+#define C_BG     tc.bg       // background
+#define C_PANEL  tc.panel    // list rows, buttons
+#define C_HILITE tc.hilite   // selected row
+#define C_ACCENT tc.accent
+#define C_BRONZE tc.bronze   // folder icons, header edge
+#define C_TEXT   tc.text
+#define C_DIM    tc.dim
 #define C_RED    0xF800
 #define C_GREEN  0x07E0
+
+// Header bar color at row y: bright top edge, gradient, bronze bottom edge.
+static uint16_t headerColor(int y) {
+  const ThemeDef &t = theme();
+  return y == 0 ? hex565(t.hdrTop) : y >= 30 ? C_BRONZE : mixHex(t.hdrA, t.hdrB, y * 255 / 31);
+}
+
+// ---- menu animation: header stars, a shine along the bronze edge, the glowing
+// selected row and scrolling names. uiTick() is called from every menu's wait loop. ----
+#define HDR_STARS 14
+static struct { int16_t x, y; uint8_t ph; } hdrStar[HDR_STARS];
+static int hdrX0 = 0, hdrX1 = 0;     // free part of the header (no title or buttons)
+static bool hdrOn = false;
+static uint32_t uiAnimAt = 0;
+
+static void hdrBegin(const char *title, bool rightButton) {
+  lcd.setFont(&fonts::Font2);
+  hdrX0 = 8 + lcd.textWidth(title) + 10;
+  hdrX1 = rightButton ? SCR_W - 70 : SCR_W - 4;
+  hdrOn = true;
+  uint32_t r = esp_random();
+  for (int i = 0; i < HDR_STARS; i++) {
+    r = r * 1103515245u + 12345u;
+    hdrStar[i].x = (r >> 8) % SCR_W;
+    hdrStar[i].y = 3 + (r >> 20) % 24;
+    hdrStar[i].ph = r >> 24;
+  }
+}
+// headerHints() takes part of the free span
+static void hdrReserve(int xFrom) { if (xFrom - 6 < hdrX1) hdrX1 = xFrom - 6; }
+
+// selected row: pulsing outline with a light running along its top and bottom edges
+static struct { bool on; int16_t x, y, w, h; uint16_t bg; } selGlow = { false };
+static void glowSet(int x, int y, int w, int h, uint16_t bg) { selGlow = { true, (int16_t)x, (int16_t)y, (int16_t)w, (int16_t)h, bg }; }
+static void glowOff() { selGlow.on = false; }
+
+// one name that scrolls sideways inside a clip box when it doesn't fit
+static struct {
+  bool on; int16_t x0, x1, yc; uint16_t fg, bg; String text; int16_t tw; uint32_t t0; uint8_t loops;
+} marq = { false };
+static void marqueeOff() { marq.on = false; marq.text = String(); }
+// true if the text is wider than the box (then it scrolls; drawn clipped at offset 0 now)
+static bool marqueeSet(int x0, int x1, int yc, const String &text, uint16_t fg, uint16_t bg) {
+  lcd.setFont(&fonts::Font2);
+  int tw = lcd.textWidth(text);
+  if (tw <= x1 - x0) { marqueeOff(); return false; }
+  marq.on = true; marq.x0 = x0; marq.x1 = x1; marq.yc = yc; marq.fg = fg; marq.bg = bg;
+  marq.text = text; marq.tw = tw; marq.t0 = millis(); marq.loops = 0;
+  return true;
+}
+static void marqueeDraw(int off) {
+  lcd.setClipRect(marq.x0, marq.yc - 9, marq.x1 - marq.x0, 18);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(marq.fg, marq.bg);
+  lcd.setTextDatum(middle_left);
+  lcd.drawString(marq.text, marq.x0 - off, marq.yc);
+  int end = marq.x0 - off + marq.tw;
+  if (end < marq.x1) lcd.fillRect(end, marq.yc - 9, marq.x1 - end, 18, marq.bg);
+  lcd.clearClipRect();
+  lcd.setTextDatum(top_left);
+}
+// offset for the time since it started: wait, scroll to the end, wait, back to the start.
+// Returns -1 once a whole cycle is done.
+static int marqueeOffset(uint32_t ms) {
+  const int over = marq.tw - (marq.x1 - marq.x0);
+  const uint32_t wait = 1200, run = (uint32_t)over * 1000 / 35;   // 35 px per second
+  if (ms < wait) return 0;
+  if (ms < wait + run) return (int)((ms - wait) * 35 / 1000);
+  if (ms < wait + run + wait) return over;
+  return -1;
+}
+
+static void uiTick() {
+  uint32_t now = millis();
+  if (now - uiAnimAt < 40) return;
+  uiAnimAt = now;
+  const ThemeDef &t = theme();
+  lcd.startWrite();
+  if (hdrOn) {
+    // stars twinkle in the free part of the header
+    for (int i = 0; i < HDR_STARS; i++) {
+      int x = hdrStar[i].x, y = hdrStar[i].y;
+      if (x < hdrX0 || x >= hdrX1) continue;
+      int b = (int)(128 + 127 * sinf(now * 0.004f + hdrStar[i].ph * 0.0245f));
+      b = b < 90 ? 0 : (b - 90) * 255 / 165;
+      uint32_t bgc = 0;   // header color at this row, as RGB888
+      { uint16_t c = headerColor(y); bgc = ((c >> 11) << 19) | (((c >> 5) & 63) << 10) | ((c & 31) << 3); }
+      lcd.drawPixel(x, y, mixHex(bgc, t.text, b));
+    }
+    // a light runs along the bronze edge every few seconds
+    static int shineLast = -100;
+    int sx = (int)((now / 6) % (SCR_W + 600)) - 60;
+    if (shineLast > -100) lcd.drawFastHLine(max(0, shineLast - 40), 30, 80, C_BRONZE), lcd.drawFastHLine(max(0, shineLast - 40), 31, 80, C_BRONZE);
+    if (sx < SCR_W + 40) {
+      for (int x = max(0, sx - 40); x < min(SCR_W, sx + 40); x++) {
+        int k = 255 - abs(x - sx) * 255 / 40;
+        uint16_t c = mixHex(t.bronze, 0xFFFFFF, k * 3 / 4);
+        lcd.drawPixel(x, 30, c); lcd.drawPixel(x, 31, c);
+      }
+      shineLast = sx;
+    } else {
+      shineLast = -100;
+    }
+  }
+  if (selGlow.on) {
+    int p = (int)(128 + 127 * sinf(now * 0.005f));
+    uint16_t edge = mixHex(t.accent, t.bronze, p);
+    const int x = selGlow.x, y = selGlow.y, w = selGlow.w, h = selGlow.h;
+    lcd.drawRoundRect(x, y, w, h, 5, edge);
+    lcd.drawRoundRect(x - 1, y - 1, w + 2, h + 2, 6, mixHex(t.bg, t.accent, p / 3));   // soft halo
+    // running light on the straight top and bottom edges
+    int span = w - 12, lx = x + 6 + (int)((now / 5) % (span + 80)) - 40;
+    for (int i = -24; i <= 24; i++) {
+      int px = lx + i;
+      if (px < x + 6 || px >= x + w - 6) continue;
+      int k = 255 - abs(i) * 255 / 24;
+      uint16_t c = k > 8 ? mixHex(t.accent, 0xFFFFFF, k * 2 / 3) : edge;
+      lcd.drawPixel(px, y, c);
+      lcd.drawPixel(px, y + h - 1, c);
+    }
+    // pixels the light left behind
+    int px = lx - 25;
+    if (px >= x + 6 && px < x + w - 6) { lcd.drawPixel(px, y, edge); lcd.drawPixel(px, y + h - 1, edge); }
+  }
+  if (marq.on) {
+    int off = marqueeOffset(now - marq.t0);
+    if (off < 0) { marq.t0 = now; off = 0; if (marq.loops < 255) marq.loops++; }
+    marqueeDraw(off);
+  }
+  lcd.endWrite();
+}
 
 static void uiHeaderIcon(int cx, int cy, bool back);
 static void uiHeader(const char *title, const char *right = nullptr, const char *hint = nullptr) {
   // gunmetal bar: bright top edge, steel gradient, bronze bottom edge
-  for (int y = 0; y < 32; y++) {
-    int t = y * 255 / 31;
-    uint16_t c = y == 0 ? RGB565(0xC8, 0xD6, 0xE2)
-               : y >= 30 ? C_BRONZE
-               : RGB565(0x6A - (0x6A - 0x26) * t / 255, 0x7E - (0x7E - 0x34) * t / 255, 0x92 - (0x92 - 0x44) * t / 255);
-    lcd.drawFastHLine(0, y, SCR_W, c);
-  }
+  for (int y = 0; y < 32; y++) lcd.drawFastHLine(0, y, SCR_W, headerColor(y));
+  hdrBegin(title, right != nullptr);
   lcd.setTextColor(C_TEXT);   // transparent background over the gradient
   lcd.setFont(&fonts::Font2);
   lcd.setTextDatum(middle_left);
@@ -594,6 +753,7 @@ static void headerHints(const char *title, int xRight, const char *ok, const cha
     for (int i = 0; i < n; i++) w += 10 + (withText ? lcd.textWidth(items[i].label) + 3 : 0) + (i ? 8 : 0);
     if (xRight - w < titleEnd) continue;
     int x = xRight - w;
+    hdrReserve(x);
     lcd.setTextColor(C_TEXT);
     lcd.setTextDatum(middle_left);
     for (int i = 0; i < n; i++) {
@@ -624,144 +784,160 @@ static void bottomHint(const char *label) {
 }
 
 // ----------------------------------------------------------------------------
-// Boot splash: drawn by code (src/splash), animated by a task on core 0 while the
-// rest of the board starts up. Letters fly in, "hackatnight.com" types itself, a
-// shine sweeps across the chrome; stars twinkle and mist drifts until it ends.
+// Wireframe H@N: the boot screen and the "Loading game" screen draw the logo as a 3D
+// wireframe (outline from src/wire/wire_logo.h, extruded), into a small 4-bit buffer
+// that is then pushed to the screen, so it never flickers.
 // ----------------------------------------------------------------------------
-#include "splash/splash.h"
+#include "wire/wire_logo.h"
 static uint16_t *dmaBuf[2];
 #define DMA_LINES 3
 #define DMA_W 320
+
+enum { WI_BG = 0, WI_FRONT, WI_BACK, WI_SIDE, WI_STAR1, WI_STAR2, WI_STAR3, WI_STAR4 };
+struct WireFb {
+  uint8_t *px = nullptr;      // 4 bits per pixel, even x in the low nibble
+  uint16_t *rows = nullptr;   // RGB565 for WF_ROWS rows, for pushing
+  int w = 0, h = 0, sx = 0, sy = 0;   // size and position on screen
+  uint16_t pal[16];
+};
+#define WF_ROWS 8
+
+static bool wfAlloc(WireFb &f, int x, int y, int w, int h) {
+  f.w = (w + 1) & ~1; f.h = h; f.sx = x; f.sy = y;
+  f.px = (uint8_t *)malloc(f.w * f.h / 2);
+  f.rows = (uint16_t *)malloc(f.w * WF_ROWS * 2);
+  if (!f.px || !f.rows) { free(f.px); free(f.rows); f.px = nullptr; f.rows = nullptr; return false; }
+  return true;
+}
+static void wfFree(WireFb &f) { free(f.px); free(f.rows); f.px = nullptr; f.rows = nullptr; }
+static inline void wfClear(WireFb &f) { memset(f.px, 0, f.w * f.h / 2); }
+static inline void wfPlot(WireFb &f, int x, int y, uint8_t c) {
+  if ((unsigned)x >= (unsigned)f.w || (unsigned)y >= (unsigned)f.h) return;
+  uint8_t &b = f.px[(y * f.w + x) >> 1];
+  b = (x & 1) ? (b & 0x0F) | (c << 4) : (b & 0xF0) | c;
+}
+static void wfLine(WireFb &f, int x0, int y0, int x1, int y1, uint8_t c) {
+  int dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy;
+  if (dx > 2000 || dy < -2000) return;
+  while (true) {
+    wfPlot(f, x0, y0, c);
+    if (x0 == x1 && y0 == y1) return;
+    int e2 = 2 * e;
+    if (e2 >= dy) { e += dy; x0 += sx; }
+    if (e2 <= dx) { e += dx; y0 += sy; }
+  }
+}
+static void wfPush(WireFb &f) {
+  lcd.startWrite();
+  for (int y = 0; y < f.h; y += WF_ROWS) {
+    int n = min(WF_ROWS, f.h - y);
+    const uint8_t *s = f.px + y * f.w / 2;
+    uint16_t *d = f.rows;
+    for (int i = 0; i < n * f.w / 2; i++) { *d++ = f.pal[s[i] & 15]; *d++ = f.pal[s[i] >> 4]; }
+    lcd.pushImage(f.sx, f.sy + y, f.w, n, f.rows);
+  }
+  lcd.endWrite();
+}
+
+// The logo, centered at (cx, cy), hPx pixels tall when straight on.
+// ay / ax: turn around the vertical / horizontal axis; dist: camera distance in logo heights.
+static void wfLogo(WireFb &f, float cx, float cy, float hPx, float ay, float ax, float dist) {
+  const float fov = hPx * 6.0f, depth = 0.2f;
+  const float ca = cosf(ay), sa = sinf(ay), cb = cosf(ax), sb = sinf(ax);
+  int16_t fx[80], fy[80], bx[80], by[80];
+  int p = 0;
+  for (size_t c = 0; c < sizeof WIRE_LEN; c++) {
+    int n = WIRE_LEN[c];
+    for (int i = 0; i < n; i++) {
+      float x = WIRE_PTS[p + i][0] / 256.0f, y = WIRE_PTS[p + i][1] / 256.0f;
+      for (int side = 0; side < 2; side++) {
+        float z = side ? depth : -depth;
+        float x2 = x * ca - z * sa, z2 = x * sa + z * ca;
+        float y2 = y * cb - z2 * sb, z3 = y * sb + z2 * cb + dist;
+        if (z3 < 0.2f) z3 = 0.2f;
+        int16_t px = (int16_t)(cx + x2 * fov / z3), py = (int16_t)(cy + y2 * fov / z3);
+        if (side) { bx[i] = px; by[i] = py; } else { fx[i] = px; fy[i] = py; }
+      }
+    }
+    for (int i = 0; i < n; i++) wfLine(f, bx[i], by[i], bx[(i + 1) % n], by[(i + 1) % n], WI_BACK);
+    for (int i = 0; i < n; i += n > 20 ? 4 : 1) wfLine(f, fx[i], fy[i], bx[i], by[i], WI_SIDE);
+    for (int i = 0; i < n; i++) wfLine(f, fx[i], fy[i], fx[(i + 1) % n], fy[(i + 1) % n], WI_FRONT);
+    p += n;
+  }
+}
+
+// palette from the theme; glow 0..255 brightens the logo toward white
+static void wfPalette(WireFb &f, int glow) {
+  const ThemeDef &t = theme();
+  for (int i = 0; i < 16; i++) f.pal[i] = C_BG;
+  f.pal[WI_FRONT] = mixHex(t.accent, 0xFFFFFF, glow);
+  f.pal[WI_BACK] = mixHex(t.bronze, 0xFFFFFF, glow);
+  f.pal[WI_SIDE] = mixHex(t.dim, 0xFFFFFF, glow / 2);
+  for (int i = 0; i < 4; i++) f.pal[WI_STAR1 + i] = mixHex(t.bg, t.text, 70 + i * 60);
+}
+
+// ---- boot screen: stars fly past, the logo spins in from far away, settles and
+// rocks gently, flashes once, then "hackatnight.com" types itself underneath.
+// Runs as a task on core 0 while the rest of the board starts up. ----
 static volatile bool splashSkip = false, splashStop = false, splashDone = true;
-static uint8_t *spText = nullptr, *spOutline = nullptr;   // 1-bit masks for the web address
-static int spPitch = 0;
-#define SP_TEXT_H 26
+static WireFb bootFb;
+#define BOOT_TEXT_H 40
+#define BOOT_STARS 64
 static const char *SP_TEXT = "hackatnight.com";
 
-static void spRect(const splash_frame_t &f, int x0, int y0, int x1, int y1) {
-  if (x1 < x0 || y1 < y0) return;
-  int w = x1 - x0 + 1;
-  xSemaphoreTake(lcdMutex, portMAX_DELAY);
-  lcd.startWrite();
-  lcd.setAddrWindow(x0, y0, w, y1 - y0 + 1);
-  int chunk = 0;
-  for (int y = y0; y <= y1; y += DMA_LINES) {
-    uint16_t *out = dmaBuf[chunk++ & 1];
-    int rows = min(DMA_LINES, y1 - y + 1);
-    for (int r = 0; r < rows; r++) splash_render(&f, x0, y + r, w, out + r * w);
-    lcd.writePixelsDMA(out, w * rows, false);   // renders the next rows while this one is sent
-  }
-  lcd.waitDMA();
-  lcd.endWrite();
-  xSemaphoreGive(lcdMutex);
-}
-
-// Renders the first n letters (plus a block cursor) into the two masks, straight from
-// the font's glyph bitmaps (no sprite: keeps LovyanGFX's sprite engine out of the build).
-static inline void spSet(uint8_t *m, int x, int y) {
-  if (x >= 0 && x < SCR_W && y >= 0 && y < SP_TEXT_H) m[y * spPitch + (x >> 3)] |= 0x80 >> (x & 7);
-}
-
-static void spBuildText(int n, bool cursor) {
-  const lgfx::GFXfont &F = fonts::FreeMonoBold12pt7b;
-  const int len = strlen(SP_TEXT), base = 18;
-  int full = 0;
-  for (int i = 0; i < len; i++) full += F.glyph[SP_TEXT[i] - F.first].xAdvance;
-  int pen = (SCR_W - full) / 2;
-  memset(spText, 0, spPitch * SP_TEXT_H);
-  for (int i = 0; i < n && i < len; i++) {
-    const lgfx::GFXglyph &g = F.glyph[SP_TEXT[i] - F.first];
-    const uint8_t *bm = F.bitmap + g.bitmapOffset;
-    int bit = 0;
-    for (int yy = 0; yy < g.height; yy++)
-      for (int xx = 0; xx < g.width; xx++, bit++)
-        if (bm[bit >> 3] & (0x80 >> (bit & 7))) spSet(spText, pen + g.xOffset + xx, base + g.yOffset + yy);
-    pen += g.xAdvance;
-  }
-  if (cursor) {
-    int cw = F.glyph['m' - F.first].xAdvance;
-    for (int y = 4; y <= 21; y++)
-      for (int x = pen + 1; x < pen + cw - 1; x++) spSet(spText, x, y);
-  }
-  // outline: the text grown by 2 pixels
-  memset(spOutline, 0, spPitch * SP_TEXT_H);
-  for (int y = 0; y < SP_TEXT_H; y++)
-    for (int x = 0; x < SCR_W; x++)
-      if (spText[y * spPitch + (x >> 3)] & (0x80 >> (x & 7)))
-        for (int dy = -2; dy <= 2; dy++)
-          for (int dx = -2; dx <= 2; dx++)
-            if (abs(dx) + abs(dy) <= 3) spSet(spOutline, x + dx, y + dy);
-}
-
 static void splashTask(void *) {
-  splash_frame_t f;
-  memset(&f, 0, sizeof f);
-  f.text_mask = spText;
-  f.outline_mask = spOutline;
-  f.mask_pitch = spPitch;
-  f.text_h = SP_TEXT_H;
-  f.text_y0 = splash_text_y() - SP_TEXT_H / 2;
-  f.shine = -2000;
-  const int64_t t0 = esp_timer_get_time();
-  auto now = [&]() { return (float)((esp_timer_get_time() - t0) / 1000000.0); };
-  // ---- the logo appears in place (the fly-in wasn't smooth on the board) ----
-  int textN = -1;
-  bool textCur = false;
-  f.text_mask = nullptr;   // no text until the first frame is up
-  f.g = 1; f.bright = 1; f.slices = 30; f.t = now();
-  splash_mist_prepare(f.t);
-  spRect(f, 0, 0, SCR_W - 1, SCR_H - 1);
-  const float T0 = now();  // typing starts once the logo is on screen
-  int lx0, ly0, lx1, ly1;
-  splash_logo_rect(1, &lx0, &ly0, &lx1, &ly1);
-  const int mistTop = splash_mist_top();
-  float lastShine = -2000;
-  // ---- typewriter, shine, twinkle, mist ----
+  WireFb &f = bootFb;
+  struct Star { float x, y, z; } st[BOOT_STARS];
+  uint32_t r = esp_random();
+  auto rnd = [&]() { r = r * 1103515245u + 12345u; return (float)((r >> 8) & 0xFFFF) / 65535.0f; };
+  for (int i = 0; i < BOOT_STARS; i++) st[i] = { rnd() * 2 - 1, rnd() * 2 - 1, rnd() };
+  const float hPx = min(f.h * 0.42f, SCR_W * 0.82f / (WIRE_LOGO_ASPECT / 256.0f));
+  const float cx = f.w / 2.0f, cy = f.h * 0.55f;
+  const uint32_t t0 = millis();
+  int typed = -1; bool cursor = false;
+  const int ty = SCR_H - BOOT_TEXT_H / 2 - 4;
   while (!splashSkip) {
-    float T = now();
-    f.t = T;
-    int n = min((int)strlen(SP_TEXT), (int)((T - T0) / 0.075f) + 1);
-    bool cur = n < (int)strlen(SP_TEXT) || ((int)(T * 2.5f) % 2 == 0);
-    if (n != textN || cur != textCur) { spBuildText(n, cur); textN = n; textCur = cur; f.text_mask = spText; }
-    // mist band (holds the text)
-    splash_mist_prepare(T);
-    spRect(f, 0, mistTop, SCR_W - 1, SCR_H - 1);
-    // twinkling stars above the mist
-    for (int i = 0; i < splash_star_count(); i++) {
-      int x, y, big;
-      splash_star(i, &x, &y, &big);
-      if (y >= mistTop) continue;
-      if (big) spRect(f, x - 1, y - 1, x + 1, y + 1); else spRect(f, x, y, x, y);
+    float t = (millis() - t0) / 1000.0f;
+    wfClear(f);
+    for (int i = 0; i < BOOT_STARS; i++) {   // stars fly toward the viewer
+      float z = fmodf(st[i].z - t * 0.25f + 8.0f, 1.0f) + 0.05f;
+      int x = (int)(cx + st[i].x * f.w * 0.2f / z), y = (int)(f.h / 2 + st[i].y * f.h * 0.25f / z);
+      int lvl = z > 0.75f ? 0 : z > 0.5f ? 1 : z > 0.25f ? 2 : 3;
+      wfPlot(f, x, y, WI_STAR1 + lvl);
+      if (lvl == 3) wfPlot(f, x + 1, y, WI_STAR4);
     }
-    // shine sweep across the chrome (2.3 - 3.2 s): redraw the strip it moved over
-    float st = T - T0 - 1.3f;   // shine right after the typing
-    float sh = (st > 0 && st < 1.0f) ? -40 + (SCR_W + 80) * st / 0.9f : -2000;
-    if (sh > -1000 || lastShine > -1000) {
-      f.shine = sh;
-      float a = (lastShine > -1000 ? lastShine : sh) - 34, b = (sh > -1000 ? sh : lastShine) + 34;
-      // band: x + 0.55 y - 0.55 * shineY in [a, b]
-      for (int y = ly0; y <= min(ly1, mistTop - 1); y++) {
-        float off = 0.55f * (y - splash_shine_y());
-        int xa = max(lx0, (int)(a - off)), xb = min(lx1, (int)(b - off));
-        if (xa <= xb) spRect(f, xa, y, xb, y);
-      }
-      lastShine = sh;
+    float e = t >= 1.6f ? 1.0f : 1.0f - powf(1.0f - t / 1.6f, 3.0f);   // ease out
+    float ay = (1.0f - e) * 3.2f + sinf(t * 1.2f) * 0.35f * e, ax = sinf(t * 0.9f) * 0.2f;
+    int glow = t > 1.6f && t < 2.0f ? (int)(200 * (1.0f - fabsf(t - 1.8f) / 0.2f)) : 0;
+    wfPalette(f, glow);
+    wfLogo(f, cx, cy, hPx, ay, ax, 6.0f + (1.0f - e) * 40.0f);
+    wfPush(f);
+    // the web address types itself, then a blinking cursor
+    int n = t < 1.9f ? 0 : min((int)strlen(SP_TEXT), (int)((t - 1.9f) / 0.07f) + 1);
+    bool cur = n < (int)strlen(SP_TEXT) || ((int)(t * 3) & 1);
+    if (t >= 1.9f && (n != typed || cur != cursor)) {
+      typed = n; cursor = cur;
+      lcd.startWrite();
+      lcd.setFont(&fonts::Font2);
+      lcd.setTextColor(C_ACCENT, C_BG);
+      lcd.setTextDatum(middle_left);
+      String s = String(SP_TEXT).substring(0, n) + (cur ? "_" : " ");
+      int x = (SCR_W - lcd.textWidth(String(SP_TEXT) + "_")) / 2;
+      lcd.drawString(s, x, ty);
+      lcd.setTextDatum(top_left);
+      lcd.endWrite();
     }
-    if (T - T0 > 2.5f && splashStop) break;
-    if (T > 12.0f) break;   // never animate forever
-    vTaskDelay(1);
+    if (t > 3.3f && splashStop) break;
+    delay(5);
   }
   splashDone = true;
   vTaskDelete(nullptr);
 }
 
 static void splashStart() {
-  spPitch = (SCR_W + 7) / 8;
-  spText = (uint8_t *)calloc(spPitch, SP_TEXT_H);
-  spOutline = (uint8_t *)calloc(spPitch, SP_TEXT_H);
-  if (!spText || !spOutline || splash_setup(SCR_W, SCR_H) != 0) {
+  lcd.fillScreen(C_BG);
+  if (!wfAlloc(bootFb, 0, 0, SCR_W, SCR_H - BOOT_TEXT_H)) {
     // not enough RAM for the animation: a plain title instead
-    lcd.fillScreen(C_BG);
     lcd.setFont(&fonts::Font2);
     lcd.setTextColor(C_TEXT, C_BG);
     lcd.setTextDatum(middle_center);
@@ -774,7 +950,7 @@ static void splashStart() {
     return;
   }
   splashSkip = splashStop = splashDone = false;
-  xTaskCreatePinnedToCore(splashTask, "splash", 6144, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(splashTask, "splash", 4096, nullptr, 1, nullptr, 0);
 }
 
 // Waits for the animation to finish (or a tap / button press to skip it), then frees it.
@@ -787,10 +963,71 @@ static void splashFinish() {
   }
   int x, y;
   while (readTouch(x, y)) delay(20);   // don't let the skip tap select a ROM
-  splash_release();
-  free(spText); spText = nullptr;
-  free(spOutline); spOutline = nullptr;
+  wfFree(bootFb);
 }
+
+// ---- "Loading game" screen: the logo rocks while the game is copied to flash ----
+static WireFb loadFb;
+static uint32_t loadT0 = 0, loadAt = 0;
+static int loadNameY() { return SCR_H - 96; }
+
+static void loaderTick() {
+  if (!loadFb.px) return;
+  uint32_t now = millis();
+  if (now - loadAt < 40) return;
+  loadAt = now;
+  float t = (now - loadT0) / 1000.0f;
+  WireFb &f = loadFb;
+  wfClear(f);
+  wfPalette(f, 0);
+  float hPx = min(f.h * 0.62f, f.w * 0.85f / (WIRE_LOGO_ASPECT / 256.0f));
+  wfLogo(f, f.w / 2.0f, f.h / 2.0f, hPx, sinf(t * 1.4f) * 0.9f, sinf(t * 1.0f) * 0.35f, 6.0f);
+  wfPush(f);
+  uiTick();   // header stars
+}
+
+static void uiHeader(const char *title, const char *right, const char *hint);
+// title in the header, the game's name, two lines of notes at the bottom
+static void loaderBegin(const char *title, const String &name, const char *note1, const char *note2) {
+  lcd.fillScreen(C_BG);
+  uiHeader(title, nullptr, nullptr);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextDatum(middle_center);
+  String n = name;
+  if (lcd.textWidth(n) > SCR_W - 16) {
+    while (n.length() > 4 && lcd.textWidth(n + "~") > SCR_W - 16) n.remove(n.length() - 1);
+    n += "~";
+  }
+  lcd.setTextColor(C_TEXT, C_BG);
+  lcd.drawString(n, SCR_W / 2, loadNameY());
+  lcd.setTextColor(C_DIM, C_BG);
+  if (note1) lcd.drawString(note1, SCR_W / 2, SCR_H - 34);
+  if (note2) lcd.drawString(note2, SCR_W / 2, SCR_H - 16);
+  lcd.setTextDatum(top_left);
+  int top = 38, h = loadNameY() - 14 - top;
+  int w = min(SCR_W - 16, 300);
+  if (h > 20) wfAlloc(loadFb, (SCR_W - w) / 2, top, w, h);   // no RAM: no animation
+  loadT0 = millis(); loadAt = 0;
+  loaderTick();
+}
+
+static void loaderProgress(const char *label, int pct) {
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_TEXT, C_BG);
+  lcd.setTextDatum(middle_center);
+  char buf[48];
+  snprintf(buf, sizeof buf, "%s %d%%", label, pct);
+  int y = loadNameY() + 22;
+  lcd.fillRect(0, y - 9, SCR_W, 18, C_BG);
+  lcd.drawString(buf, SCR_W / 2, y);
+  int bw = min(240, SCR_W - 40), bx = (SCR_W - bw) / 2;
+  lcd.drawRoundRect(bx, y + 12, bw, 10, 4, C_DIM);
+  if (pct > 0) lcd.fillRoundRect(bx + 2, y + 14, (bw - 4) * pct / 100, 6, 3, C_ACCENT);
+  lcd.setTextDatum(top_left);
+  loaderTick();
+}
+
+static void loaderEnd() { wfFree(loadFb); hdrOn = false; }
 
 static void uiMessage(const char *line1, const char *line2 = nullptr, uint16_t color = C_TEXT) {
   lcd.fillRect(0, 120, SCR_W, 80, C_BG);
@@ -799,20 +1036,6 @@ static void uiMessage(const char *line1, const char *line2 = nullptr, uint16_t c
   lcd.setTextDatum(middle_center);
   lcd.drawString(line1, SCR_W / 2, 145);
   if (line2) { lcd.setTextColor(C_DIM, C_BG); lcd.drawString(line2, SCR_W / 2, 170); }
-  lcd.setTextDatum(top_left);
-}
-
-static void uiProgress(const char *label, int pct) {
-  lcd.setFont(&fonts::Font2);
-  lcd.setTextColor(C_TEXT, C_BG);
-  lcd.setTextDatum(middle_center);
-  char buf[48];
-  snprintf(buf, sizeof buf, "%s %d%%", label, pct);
-  lcd.fillRect(0, 130, SCR_W, 20, C_BG);
-  lcd.drawString(buf, SCR_W / 2, 140);
-  int bx = (SCR_W - 200) / 2;
-  lcd.drawRect(bx, 160, 200, 16, C_TEXT);
-  lcd.fillRect(bx + 2, 162, 196 * pct / 100, 12, C_ACCENT);
   lcd.setTextDatum(top_left);
 }
 
@@ -1461,6 +1684,7 @@ static bool writeSlot(File &f, int slot, int bank, uint8_t *ioBuf, String &msg) 
     if (!f.seek((uint32_t)bank * 16384 + o)) { msg = "SD seek error"; return false; }
     f.read(ioBuf, IOBUF_SIZE);
     if (esp_partition_write(romPart, dst + o, ioBuf, IOBUF_SIZE) != ESP_OK) { msg = "Flash write failed"; return false; }
+    loaderTick();
     for (uint32_t v = 0; v < IOBUF_SIZE; v += sizeof vbuf) {
       esp_partition_read(romPart, dst + o + v, vbuf, sizeof vbuf);
       if (memcmp(vbuf, ioBuf + v, sizeof vbuf) != 0) { msg = "Flash verify failed"; return false; }
@@ -1555,25 +1779,18 @@ static uint32_t loadRomToFlash(const RomEntry &r, String &msg) {
       prefs.begin("gbc", false);
       prefs.remove("rpath");          // an interrupted copy forces a full one next time
       prefs.end();
-      lcd.fillScreen(C_BG);
-      uiHeader(cached ? "Optimizing ROM" : "Loading ROM");
-      lcd.setFont(&fonts::Font2);
-      lcd.setTextColor(C_DIM, C_BG);
-      lcd.setTextDatum(middle_center);
-      lcd.drawString(String(r.name()).substring(0, 30), SCR_W / 2, 90);
-      lcd.drawString(cached ? "Moving the busiest parts into flash" : "Big ROM: part stays on the SD card",
-                     SCR_W / 2, max(195, SCR_H - 90));
-      lcd.drawString(cached ? "(learned from your last session)" : "(gets smoother as you play)",
-                     SCR_W / 2, max(215, SCR_H - 70));
-      lcd.setTextDatum(top_left);
+      loaderBegin(cached ? "Optimizing game" : "Loading game", baseName(String(r.name())),
+                  cached ? "Moving the busiest parts into flash" : "Big ROM: part stays on the SD card",
+                  cached ? "(learned from your last session)" : "(gets smoother as you play)");
       int todo = 0, done = 0;
       for (int s2 = 0; s2 < romLayoutSlots; s2++) if (!cached || romLayout[s2] != cur[s2]) todo++;
       for (int s2 = 0; s2 < romLayoutSlots; s2++) {
         if (cached && romLayout[s2] == cur[s2]) continue;
-        if (!writeSlot(f, s2, romLayout[s2], ioBuf, msg)) { free(cur); freeBigRom(); f.close(); return 0; }
+        if (!writeSlot(f, s2, romLayout[s2], ioBuf, msg)) { free(cur); freeBigRom(); f.close(); loaderEnd(); return 0; }
         done++;
-        if ((done & 3) == 0 || done == todo) uiProgress(cached ? "Optimizing" : "Copying", done * 100 / max(1, todo));
+        if ((done & 3) == 0 || done == todo) loaderProgress(cached ? "Optimizing" : "Copying", done * 100 / max(1, todo));
       }
+      loaderEnd();
       prefs.begin("gbc", false);
       prefs.putBytes("rlay", romLayout, romLayoutSlots * sizeof(short));
       prefs.putString("rpath", r.path);
@@ -1594,20 +1811,11 @@ static uint32_t loadRomToFlash(const RomEntry &r, String &msg) {
     prefs.begin("gbc", false);
     prefs.remove("rpath");
     prefs.end();
-    lcd.fillScreen(C_BG);
-    uiHeader("Loading ROM");
-    lcd.setFont(&fonts::Font2);
-    lcd.setTextColor(C_DIM, C_BG);
-    lcd.setTextDatum(middle_center);
-    lcd.drawString(String(r.name()).substring(0, 30), SCR_W / 2, 90);
-    if (romFlashBytes < need) {
-      lcd.drawString("Big ROM: part stays on the SD card", SCR_W / 2, max(195, SCR_H - 90));
-      lcd.drawString("(may pause briefly while playing)", SCR_W / 2, max(215, SCR_H - 70));
-    } else {
-      lcd.drawString("First launch copies the ROM to flash", SCR_W / 2, max(195, SCR_H - 90));
-      lcd.drawString("(next launch is instant)", SCR_W / 2, max(215, SCR_H - 70));
-    }
-    lcd.setTextDatum(top_left);
+    if (romFlashBytes < need)
+      loaderBegin("Loading game", baseName(String(r.name())), "Big ROM: part stays on the SD card", "(may pause briefly while playing)");
+    else
+      loaderBegin("Loading game", baseName(String(r.name())), "First launch copies the game to flash", "(next launch is instant)");
+    loaderProgress("Copying", 0);
 
     f.seek(0);
     const uint32_t BLK = 65536;
@@ -1615,17 +1823,18 @@ static uint32_t loadRomToFlash(const RomEntry &r, String &msg) {
     for (uint32_t off = 0; off < total; off += BLK) {
       uint32_t blk = min(BLK, total - off);
       if (esp_partition_erase_range(romPart, off, (blk + 4095) & ~4095u) != ESP_OK) {
-        msg = "Flash erase failed"; f.close(); return 0;
+        msg = "Flash erase failed"; f.close(); loaderEnd(); return 0;
       }
       for (uint32_t o = 0; o < blk; o += IOBUF_SIZE) {
         memset(ioBuf, 0xFF, IOBUF_SIZE);
         int n = f.read(ioBuf, IOBUF_SIZE);
-        if (n <= 0 && off + o < copyLen) { msg = "SD read error"; f.close(); return 0; }
+        if (n <= 0 && off + o < copyLen) { msg = "SD read error"; f.close(); loaderEnd(); return 0; }
         if (esp_partition_write(romPart, off + o, ioBuf, IOBUF_SIZE) != ESP_OK) {
-          msg = "Flash write failed"; f.close(); return 0;
+          msg = "Flash write failed"; f.close(); loaderEnd(); return 0;
         }
+        loaderTick();
       }
-      uiProgress("Copying", (int)((uint64_t)(off + blk) * 100 / total));
+      loaderProgress("Copying", (int)((uint64_t)(off + blk) * 100 / total));
     }
     // verify a few spots against the file
     static uint8_t vbuf[512];
@@ -1633,8 +1842,9 @@ static uint32_t loadRomToFlash(const RomEntry &r, String &msg) {
       f.seek(off);
       int n = f.read(ioBuf, 512);
       esp_partition_read(romPart, off, vbuf, 512);
-      if (n > 0 && memcmp(ioBuf, vbuf, n) != 0) { msg = "Flash verify failed"; f.close(); return 0; }
+      if (n > 0 && memcmp(ioBuf, vbuf, n) != 0) { msg = "Flash verify failed"; f.close(); loaderEnd(); return 0; }
     }
+    loaderEnd();
     prefs.begin("gbc", false);
     prefs.putString("rpath", r.path);
     prefs.putUInt("rsize", size);
@@ -1793,20 +2003,52 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
     int y = y0 + (i - top) * pitch;
     bool hi = i == sel;
     uint16_t bg = hi ? C_HILITE : C_PANEL;
-    lcd.fillRoundRect(6, y, SCR_W - (scroll ? 14 : 12), rowH, 6, bg);
-    if (hi) lcd.drawRoundRect(6, y, SCR_W - (scroll ? 14 : 12), rowH, 6, C_ACCENT);
+    const int rw = SCR_W - (scroll ? 14 : 12), yc = y + rowH / 2;
+    if (!hi && selGlow.on && selGlow.y == y) { glowOff(); marqueeOff(); }
+    if (!hi && marq.on && marq.yc == yc) marqueeOff();
+    lcd.fillRoundRect(6, y, rw, rowH, 6, bg);
+    lcd.drawRoundRect(5, y - 1, rw + 2, rowH + 2, 6, C_BG);   // clears an old halo
+    if (hi) { lcd.drawRoundRect(6, y, rw, rowH, 6, C_ACCENT); glowSet(6, y, rw, rowH, bg); }
     lcd.setFont(&fonts::Font2);
-    lcd.setTextColor(C_TEXT, bg);
-    lcd.setTextDatum(middle_left);
-    lcd.drawString(items[i].label, 14, y + rowH / 2);
+    int lx1 = SCR_W - (scroll ? 16 : 14) - 4;
     if (items[i].value.length()) {
       lcd.setTextColor(C_ACCENT, bg);
       lcd.setTextDatum(middle_right);
-      lcd.drawString(items[i].value, SCR_W - (scroll ? 16 : 14), y + rowH / 2);
+      lcd.drawString(items[i].value, SCR_W - (scroll ? 16 : 14), yc);
+      lx1 -= lcd.textWidth(items[i].value) + 6;
+    }
+    // a label too long for the row is cut off; the selected one scrolls
+    if (hi && marqueeSet(14, lx1, yc, items[i].label, C_TEXT, bg)) {
+      marqueeDraw(0);
+    } else {
+      lcd.setClipRect(14, y, max(1, lx1 - 14), rowH);
+      lcd.setTextColor(C_TEXT, bg);
+      lcd.setTextDatum(middle_left);
+      lcd.drawString(items[i].label, 14, yc);
+      lcd.clearClipRect();
     }
     lcd.setTextDatum(top_left);
   };
+  // with no row selected (touch), cut-off labels take turns scrolling
+  int marqNext = 0;
+  auto marqueeRotate = [&]() {
+    if (sel >= 0 || (marq.on && marq.loops == 0)) return;
+    for (int k = 0; k < visible; k++) {
+      int i = top + (marqNext + k) % visible;
+      if (i >= n) continue;
+      int y = y0 + (i - top) * pitch, lx1 = SCR_W - (scroll ? 16 : 14) - 4;
+      lcd.setFont(&fonts::Font2);
+      if (items[i].value.length()) lx1 -= lcd.textWidth(items[i].value) + 6;
+      if (marq.on && marq.yc == y + rowH / 2 && k == 0) continue;   // just had its turn
+      if (marqueeSet(14, lx1, y + rowH / 2, items[i].label, C_TEXT, C_PANEL)) {
+        marqNext = (marqNext + k + 1) % visible;
+        return;
+      }
+    }
+    marqueeOff();
+  };
   auto drawAll = [&]() {
+    glowOff(); marqueeOff();
     lcd.fillRect(0, y0, SCR_W, avail, C_BG);
     for (int i = top; i < top + visible && i < n; i++) drawRow(i);
     if (scroll) {
@@ -1817,13 +2059,14 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
     }
   };
   lcd.fillScreen(C_BG);
+  glowOff(); marqueeOff();
   uiHeader(title, headerBtn);
   headerHints(title, SCR_W - 68, "OK", nullptr);   // Back has its own button (with its symbol)
   drawAll();
   btNavReset();
   int x, y;
   while (readTouch(x, y)) delay(10);
-  auto finish = [&](int r) { if (selState) *selState = sel; return r; };
+  auto finish = [&](int r) { glowOff(); marqueeOff(); hdrOn = false; if (selState) *selState = sel; return r; };
   while (true) {
     if (readTouch(x, y)) {
       int sx = x, sy = y, moved = 0, topAtStart = top;
@@ -1851,6 +2094,8 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
       case NAV_SYS:  return finish(-3);
       default: break;
     }
+    marqueeRotate();
+    uiTick();
     delay(10);
   }
 }
@@ -2145,6 +2390,7 @@ static void settingsMenu() {
       { "NES palette", NES_PALETTE_NAMES[cfg.nesPalette % NES_NUM_PALETTES] },
       { "Brightness", String(cfg.brightness * 100 / 255) + "%" },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
+      { "Theme", theme().name },
       { "Display & touch", ">" },
       { "Free memory", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB (max " +
                        String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + ")" },
@@ -2163,8 +2409,9 @@ static void settingsMenu() {
       case 3: cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES; break;
       case 4: cfg.brightness = cfg.brightness >= 255 ? 64 : min(255, cfg.brightness + 64); break;
       case 5: cfg.showFps ^= 1; break;
-      case 6: displayTouchMenu(); break;
-      case 8: controllerMenu(); break;
+      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
+      case 7: displayTouchMenu(); break;
+      case 9: controllerMenu(); break;
     }
     applyDisplaySettings(false);
     saveSettings();
@@ -3324,57 +3571,90 @@ static void drawFolderIcon(int x, int y, uint16_t c) {
   lcd.fillRoundRect(x, y + 4, 16, 11, 2, c);      // body
 }
 
+#define BROWSER_ROW_H 32
+#define BROWSER_Y0 34
+static int browserMarq = -1;   // entry whose name is scrolling (-1 = none)
+
+// Right end of the name area of a row (the type and size sit to its right).
+static String browserTag(Ent &e) {
+  if (e.kind == K_DIR) return ">";
+  const char *tag = e.kind == K_NES ? "NES" : isCgbName(e.name) ? "GBC" : "GB";
+  uint32_t sz = entrySize(e);
+  return sz == SIZE_UNKNOWN ? String(tag) : String(tag) + " " + String(sz / 1024) + "K";
+}
+static String browserName(Ent &e) { return e.kind == K_DIR ? String(e.name) : baseName(String(e.name)); }
+static uint16_t browserFg(Ent &e) {
+  return e.kind == K_DIR ? C_TEXT
+       : e.kind == K_NES ? RGB565(0xE0, 0xA8, 0xA0)
+       : isCgbName(e.name) ? C_TEXT : RGB565(0xD2, 0xBE, 0x96);
+}
+
+// scroll: the name of this row scrolls (it's selected, or its turn in touch mode)
+static void drawBrowserRow(int idx, bool scroll) {
+  const int rowH = BROWSER_ROW_H, y0 = BROWSER_Y0;
+  int i = idx - browserTop;
+  if (i < 0 || i >= (SCR_H - y0) / rowH || idx >= (int)roms.size()) return;
+  Ent &e = roms[idx];
+  int y = y0 + i * rowH;
+  bool hi = idx == browserSel;
+  uint16_t bg = hi ? C_HILITE : C_PANEL;
+  if (browserMarq == idx && !scroll) { marqueeOff(); browserMarq = -1; }
+  if (!hi && selGlow.on && selGlow.y == y + 1) glowOff();
+  lcd.fillRoundRect(4, y + 1, SCR_W - 8, rowH - 2, 5, bg);
+  lcd.drawRoundRect(3, y, SCR_W - 6, rowH, 6, C_BG);   // clears an old halo
+  if (hi) { lcd.drawRoundRect(4, y + 1, SCR_W - 8, rowH - 2, 5, C_ACCENT); glowSet(4, y + 1, SCR_W - 8, rowH - 2, bg); }
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextDatum(middle_left);
+  const int yc = y + rowH / 2;
+  if (e.kind == K_UP) {
+    lcd.setTextColor(C_DIM, bg);
+#if HAVE_BT
+    drawPadIcon(16, yc, backIcon());
+    lcd.drawString("Back", 28, yc);
+#else
+    lcd.drawString("< Back", 10, yc);
+#endif
+    lcd.setTextDatum(top_left);
+    return;
+  }
+  if (e.kind == K_MORE) {
+    lcd.setTextColor(C_RED, bg);
+    lcd.drawString(String(hiddenCount) + " more not shown (low RAM)", 10, yc);
+    lcd.setTextDatum(top_left);
+    return;
+  }
+  int tx = 10;
+  if (e.kind == K_DIR) { drawFolderIcon(10, yc - 9, C_BRONZE); tx = 32; }
+  String tag = browserTag(e);
+  lcd.setTextColor(C_DIM, bg);
+  lcd.setTextDatum(middle_right);
+  lcd.drawString(tag, SCR_W - (e.kind == K_DIR ? 12 : 10), yc);
+  int nx1 = SCR_W - 10 - lcd.textWidth(tag) - 10;
+  String n = browserName(e);
+  uint16_t fg = browserFg(e);
+  lcd.setTextDatum(middle_left);
+  if (scroll && marqueeSet(tx, nx1, yc, n, fg, bg)) {
+    browserMarq = idx;
+    marqueeDraw(0);
+  } else {
+    if (browserMarq == idx) { marqueeOff(); browserMarq = -1; }
+    if (lcd.textWidth(n) > nx1 - tx) {   // cut off: end it with "~"
+      while (n.length() > 1 && lcd.textWidth(n + "~") > nx1 - tx) n.remove(n.length() - 1);
+      n += "~";
+    }
+    lcd.setTextColor(fg, bg);
+    lcd.drawString(n, tx, yc);
+  }
+  lcd.setTextDatum(top_left);
+}
+
 static void drawBrowser() {
-  const int rowH = 32, y0 = 34;
+  const int rowH = BROWSER_ROW_H, y0 = BROWSER_Y0;
+  glowOff(); marqueeOff(); browserMarq = -1;
   lcd.startWrite();
   lcd.fillRect(0, y0, SCR_W, SCR_H - y0, C_BG);
-  lcd.setFont(&fonts::Font2);
   int visible = (SCR_H - y0) / rowH;
-  for (int i = 0; i < visible; i++) {
-    int idx = browserTop + i;
-    if (idx >= (int)roms.size()) break;
-    Ent &e = roms[idx];
-    int y = y0 + i * rowH;
-    bool hi = idx == browserSel;
-    uint16_t bg = hi ? C_HILITE : C_PANEL;
-    lcd.fillRoundRect(4, y + 1, SCR_W - 8, rowH - 2, 5, bg);
-    if (hi) lcd.drawRoundRect(4, y + 1, SCR_W - 8, rowH - 2, 5, C_ACCENT);
-    lcd.setTextDatum(middle_left);
-    if (e.kind == K_UP) {
-      lcd.setTextColor(C_DIM, bg);
-#if HAVE_BT
-      drawPadIcon(16, y + rowH / 2, backIcon());
-      lcd.drawString("Back", 28, y + rowH / 2);
-#else
-      lcd.drawString("< Back", 10, y + rowH / 2);
-#endif
-      continue;
-    }
-    if (e.kind == K_MORE) {
-      lcd.setTextColor(C_RED, bg);
-      lcd.drawString(String(hiddenCount) + " more not shown (low RAM)", 10, y + rowH / 2);
-      continue;
-    }
-    String n = e.kind == K_DIR ? String(e.name) : baseName(String(e.name));
-    int tx = 10;
-    if (e.kind == K_DIR) { drawFolderIcon(10, y + rowH / 2 - 9, C_BRONZE); tx = 32; }
-    int maxLen = (SCR_W - tx - 60) / 7;
-    if ((int)n.length() > maxLen) n = n.substring(0, maxLen - 1) + "~";
-    uint16_t fg = e.kind == K_DIR ? C_TEXT
-                : e.kind == K_NES ? RGB565(0xE0, 0xA8, 0xA0)
-                : isCgbName(e.name) ? C_TEXT : RGB565(0xD2, 0xBE, 0x96);
-    lcd.setTextColor(fg, bg);
-    lcd.drawString(n, tx, y + rowH / 2);
-    lcd.setTextColor(C_DIM, bg);
-    lcd.setTextDatum(middle_right);
-    if (e.kind == K_DIR) {
-      lcd.drawString(">", SCR_W - 12, y + rowH / 2);
-    } else {
-      const char *tag = e.kind == K_NES ? "NES" : isCgbName(e.name) ? "GBC" : "GB";
-      uint32_t sz = entrySize(e);
-      lcd.drawString(sz == SIZE_UNKNOWN ? String(tag) : String(tag) + " " + String(sz / 1024) + "K", SCR_W - 10, y + rowH / 2);
-    }
-  }
+  for (int i = 0; i < visible; i++) drawBrowserRow(browserTop + i, browserTop + i == browserSel);
   // scrollbar
   if ((int)roms.size() > visible) {
     int h = (SCR_H - y0) * visible / roms.size();
@@ -3382,12 +3662,42 @@ static void drawBrowser() {
     lcd.fillRect(SCR_W - 3, y0, 3, SCR_H - y0, C_BG);
     lcd.fillRect(SCR_W - 3, y, 3, h, C_ACCENT);
   }
-  lcd.setTextDatum(top_left);
   lcd.endWrite();
 }
 
+// With no row selected (touch), cut-off names take turns scrolling, one at a time.
+static void browserMarqueeRotate() {
+  if (browserSel >= 0 || roms.empty() || (marq.on && marq.loops == 0)) return;
+  int visible = (SCR_H - BROWSER_Y0) / BROWSER_ROW_H;
+  int start = browserMarq >= browserTop ? browserMarq - browserTop + 1 : 0;
+  int prev = browserMarq;
+  lcd.setFont(&fonts::Font2);
+  for (int k = 0; k < visible; k++) {
+    int idx = browserTop + (start + k) % visible;
+    if (idx >= (int)roms.size() || idx == prev) continue;
+    Ent &e = roms[idx];
+    if (e.kind == K_UP || e.kind == K_MORE) continue;
+    int tx = e.kind == K_DIR ? 32 : 10;
+    int nx1 = SCR_W - 10 - lcd.textWidth(browserTag(e)) - 10;
+    if (lcd.textWidth(browserName(e)) <= nx1 - tx) continue;
+    lcd.startWrite();
+    if (prev >= 0) drawBrowserRow(prev, false);   // back to its "~" form
+    drawBrowserRow(idx, true);
+    lcd.endWrite();
+    return;
+  }
+  if (prev >= 0 && marq.loops > 0) { marq.loops = 0; }   // the only long name: it scrolls again
+}
+
+static int runBrowserLoop();
 // Returns an index into roms, -1 = Setup, -2 = rescan, -4 = redraw, -5 = folder up
 static int runBrowser() {
+  int r = runBrowserLoop();
+  glowOff(); marqueeOff(); browserMarq = -1; hdrOn = false;   // the menu animation stops here
+  return r;
+}
+
+static int runBrowserLoop() {
   const int rowH = 32, y0 = 34;
   int visible = (SCR_H - y0) / rowH;
   lcd.fillScreen(C_BG);
@@ -3437,9 +3747,11 @@ static int runBrowser() {
       else if (ev == NAV_RIGHT) browserSel = min(n - 1, (browserSel < 0 ? 0 : browserSel) + visible);
       else if (ev == NAV_OK) { if (browserSel >= 0) return browserSel; browserSel = 0; }
       if (browserSel != s0) {
+        int t0 = browserTop;
         if (browserSel < browserTop) browserTop = browserSel;
         if (browserSel >= browserTop + visible) browserTop = browserSel - visible + 1;
-        drawBrowser();
+        if (browserTop != t0 || s0 < 0) drawBrowser();
+        else { lcd.startWrite(); drawBrowserRow(s0, false); drawBrowserRow(browserSel, true); lcd.endWrite(); }
       }
     } else if ((!sdOk || roms.empty()) && ev == NAV_OK) {
       return -2;  // rescan
@@ -3456,7 +3768,11 @@ static int runBrowser() {
       }
       if (curDir != rootDir) return -5;   // short press: folder up
     }
-    if (!readTouch(x, y)) { delay(10); continue; }
+    if (!readTouch(x, y)) {
+      if (sdOk && !roms.empty()) { browserMarqueeRotate(); uiTick(); }
+      delay(10);
+      continue;
+    }
     browserByPad = false;
     int sx = x, sy = y, moved = 0;
     int topAtStart = browserTop;
@@ -3521,6 +3837,7 @@ void setup() {
   loadSettings();
   // hold BOOT during power-up to reset display/touch settings
   if (bootPressed()) { cfg = Settings(); saveSettings(); }
+  applyTheme();
 
   lcd.setRgbOrder(cfg.swapRB);
   lcd.init();
