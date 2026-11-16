@@ -103,6 +103,7 @@ void gb_run_vblank()
 		/* a frame the display will draw: start a fresh line handoff */
 		gb_lines_need = 0;
 		gb_lines_out = 0;
+		gb_ring_wedged = 0;   /* give the display another chance every frame */
 		lcd_snap_reset();
 	}
 }

@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.6"
+#define APP_VERSION "2.19.7"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1846,9 +1846,10 @@ static volatile int fpsValue = 0;
 static volatile int emuFps = 0;
 // FPS counter ("drawn/emulated"): written into the outgoing pixel rows of every frame,
 // so the game image can't paint over it (it used to show up only now and then).
-static char fpsText[16] = "";
-static int sdPerSec = -1;   // 4 KB ROM pages read from the SD card in the last second (-1 = not streaming)
-static const uint8_t FPS_FONT[12][7] = {   // 5x7 glyphs: 0-9, '/' and 's'
+static char fpsText[24] = "";
+static int sdPerSec = -1;      // 4 KB pages read from the SD card in the last second (-1 = not streaming)
+static int stallsPerSec = 0;   // lines dropped in the last second because the display stopped
+static const uint8_t FPS_FONT[13][7] = {   // 5x7 glyphs: 0-9, '/', 's' and '!'
   {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
   {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},
   {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
@@ -1856,6 +1857,7 @@ static const uint8_t FPS_FONT[12][7] = {   // 5x7 glyphs: 0-9, '/' and 's'
   {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
   {0x01,0x01,0x02,0x04,0x08,0x10,0x10},
   {0x00,0x0E,0x10,0x0C,0x02,0x1C,0x00},   // 11: 's', for the SD page rate
+  {0x04,0x04,0x04,0x04,0x04,0x00,0x04},   // 12: '!', shown only when the display wedges
 };
 #define FPS_BOX_H 9
 
@@ -1870,7 +1872,7 @@ static inline void fpsOverlay(uint16_t *row, int y, int w) {
   const uint16_t fg = __builtin_bswap16(C_GREEN);
   for (int i = 0; i < n; i++) {
     char ch = fpsText[i];
-    int g = ch == '/' ? 10 : ch == 's' ? 11 : (ch >= '0' && ch <= '9') ? ch - '0' : -1;
+    int g = ch == '/' ? 10 : ch == 's' ? 11 : ch == '!' ? 12 : (ch >= '0' && ch <= '9') ? ch - '0' : -1;
     if (g < 0) continue;
     uint8_t bits = FPS_FONT[g][gy];
     for (int b = 0; b < 5; b++)
@@ -1882,8 +1884,12 @@ static void fpsUpdate(int drawnPerSec, int emuPerSec) {
   if (!cfg.showFps) { fpsText[0] = 0; return; }
   // A ROM too big for flash reads 4 KB pages off the SD card as it plays; that is what
   // makes big games stutter, so show the rate next to the frame rate while it happens.
-  if (sdPerSec >= 0) snprintf(fpsText, sizeof fpsText, "%d/%d s%d", drawnPerSec, emuPerSec, sdPerSec);
-  else snprintf(fpsText, sizeof fpsText, "%d/%d", drawnPerSec, emuPerSec);
+  // "!n" only appears when the display stopped answering and the emulator gave up on a
+  // line rather than freeze with it; it should always be 0.
+  char tail[8] = "";
+  if (stallsPerSec > 0) snprintf(tail, sizeof tail, " !%d", stallsPerSec);
+  if (sdPerSec >= 0) snprintf(fpsText, sizeof fpsText, "%d/%d s%d%s", drawnPerSec, emuPerSec, sdPerSec, tail);
+  else snprintf(fpsText, sizeof fpsText, "%d/%d%s", drawnPerSec, emuPerSec, tail);
 }
 
 static inline uint16_t blend565(uint16_t a, uint16_t b) {
@@ -1913,6 +1919,11 @@ static inline void waitLine(int line) {
     if (++t0 > 20000) break;   // ~200 ms: emulator stopped mid-frame, don't hang
   }
 }
+
+// The other half of the handshake: the emulator calls this while it waits for the
+// display to free a line. The emulator and the menu are the same task on this core,
+// so it has to let the core breathe, or the board stops answering its buttons.
+extern "C" void gb_ring_yield(void) { taskYIELD(); }
 
 // Which emulator is feeding the display
 enum { SYS_GB = 0, SYS_NES = 1 };
@@ -4342,6 +4353,7 @@ static void runGame(const RomEntry &r) {
   unsigned gbLastWrites = gb_sram_writes;
   int gbDirtyChecks = 0;
   unsigned lastRomFaults = gb_rom_faults + gb_sram_faults;
+  unsigned lastRingStalls = gb_ring_stalls;
 
   while (true) {
     // ---- input ----
@@ -4445,6 +4457,9 @@ static void runGame(const RomEntry &r) {
       // every page fetched from the card: ROM banks and cartridge-RAM swaps alike
       sdPerSec = streaming ? (int)(gb_rom_faults + gb_sram_faults - lastRomFaults) : -1;
       lastRomFaults = gb_rom_faults + gb_sram_faults;
+      stallsPerSec = (int)(gb_ring_stalls - lastRingStalls);
+      lastRingStalls = gb_ring_stalls;
+      if (stallsPerSec) Serial.printf("display stalled: %d lines dropped this second\n", stallsPerSec);
       fpsUpdate(fpsValue, emuFps);
       drawn = 0;
       frames = 0;

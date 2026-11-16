@@ -77,10 +77,10 @@ int main(int argc, char **argv)
   pthread_join(t, 0);
   double secs = (b.tv_sec - a.tv_sec) + (b.tv_nsec - a.tv_nsec) / 1e9;
   /* the display sleeps on purpose, so this is generous: a stall is orders of magnitude worse */
-  /* The log should be big enough that no colour change ever has to wait for a later
-   * line; anything else means a game's raster colours can land a line or two late. */
+  /* The log should be big enough that no color change ever has to wait for a later
+   * line; anything else means a game's raster colors can land a line or two late. */
   int bad = gb_pal_dropped != 0 || secs > frames * 0.05;
-  printf("%-44s ring %3d: %5.2f s, %u late colour changes  %s\n",
+  printf("%-44s ring %3d: %5.2f s, %u late color changes  %s\n",
          strrchr(argv[1], '/') ? strrchr(argv[1], '/') + 1 : argv[1],
          ring, secs, gb_pal_dropped, bad ? "FAIL" : "ok");
   return bad;

@@ -237,7 +237,12 @@ label: op(b); break;
 
 
 #define PRE_INT ( DI, PUSH(PC) )
+#ifdef GB_PROBE
+void gb_probe_int(int n);
+#define THROW_INT(n) ( gb_probe_int(n), (IF &= ~(1<<(n))), (PC = 0x40+((n)<<3)) )
+#else
 #define THROW_INT(n) ( (IF &= ~(1<<(n))), (PC = 0x40+((n)<<3)) )
+#endif
 
 
 

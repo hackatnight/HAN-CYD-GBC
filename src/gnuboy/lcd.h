@@ -61,6 +61,17 @@ void lcd_set_dmg_palette(const int *p);
  * gb_lines_out = lines finished in this frame, gb_lines_need = oldest line the
  * display still needs (the emulator waits rather than overwrite it). */
 #define GB_RING 32
+/* How long the emulator will wait for a wedged display before dropping a line
+ * and carrying on, so the menu always comes back. */
+#ifndef GB_RING_WAIT_US
+#define GB_RING_WAIT_US 250000
+#endif
+extern unsigned gb_ring_stalls;   /* lines dropped because the display stopped */
+extern int gb_ring_wedged;        /* set once a frame gives up, so the rest of it does not wait */
+/* Declared here rather than including sys.h, which still carries an older
+ * sys_elapsed() prototype that clashes with the one in gnuboy.h. */
+unsigned long sys_micros();
+void gb_ring_yield(void);         /* let the rest of this core run */
 #ifndef GB_PAL_CHANGE_T
 #define GB_PAL_CHANGE_T
 typedef struct { unsigned char line, index; unsigned short color; } gb_pal_change_t;

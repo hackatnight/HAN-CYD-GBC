@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the JC2432W328C (2.8\", capacitive touch)",
-  "version": "2.19.6",
+  "version": "2.19.7",
   "new_install_prompt_erase": true,
   "builds": [
     {

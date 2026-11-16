@@ -6,6 +6,9 @@
 #include "defs.h"
 #include "hw.h"
 #include "regs.h"
+#ifdef GB_PROBE
+void gb_probe_hram(int a, int b);   /* host probe only, see tools/hosttest/dkjam.c */
+#endif
 #include "mem.h"
 #include "gb_glue.h"
 byte sound_read(byte r);
@@ -48,6 +51,11 @@ void IRAM_ATTR mem_updatemap()
 	{
 		int rb = mbc.rombank & (mbc.romsize - 1);
 		byte *bp = gb_bank_map ? gb_bank_map[rb] : rom.bank[rb];
+#ifdef GB_TRACE_ROM
+		/* host tracer: nothing is mapped, so every read reaches mem_read() */
+		map[0x4] = map[0x5] = map[0x6] = map[0x7] = NULL;
+		return;
+#endif
 		if (bp)
 		{
 			map[0x4] = bp - 0x4000;
@@ -567,6 +575,9 @@ void IRAM_ATTR mem_write(int a, byte b)
 		}
 		if ((a & 0xFF80) == 0xFF80 && a != 0xFFFF)
 		{
+#ifdef GB_PROBE
+			gb_probe_hram(a, b);
+#endif
 			ram.hi[a & 0xFF] = b;
 			break;
 		}
@@ -601,7 +612,12 @@ byte IRAM_ATTR mem_read(int a)
 		case 0x6:
 		{
 			int rb = mbc.romsize ? (mbc.rombank & (mbc.romsize - 1)) : 0;
-			byte *bp = gb_bank_map ? gb_bank_map[rb] : rom.bank[rb];
+			byte *bp;
+#ifdef GB_TRACE_ROM
+			gb_rom_trace(rb, (a >> 12) & 3);
+			return rom.bank[rb][a & 0x3FFF];
+#endif
+			bp = gb_bank_map ? gb_bank_map[rb] : rom.bank[rb];
 			if (bp) return bp[a & 0x3FFF];
 			return gb_rom_fault(rb, (a >> 12) & 3)[a & 0x0FFF];
 		}

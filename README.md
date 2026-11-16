@@ -618,8 +618,14 @@ waits on it: if a frame fills it, the rest are retried on the next line, so they
 rather than holding the emulator up.
 The log is sized from the ring (a game streaming from the SD card has a small ring and
 gets a small log), because on a 4 MB game every kilobyte here is one fewer 4 KB page of ROM kept in RAM.
+
+The emulator and the on-screen menu are the same task, so the emulator never waits on the display
+without a way out: while it waits it lets the rest of the core run, and if the display has not freed a
+line in a quarter of a second it gives up on the rest of that frame and carries on. A wedged display
+then costs a torn picture instead of a board that stops answering its buttons and has to be reset. The
+frame counter shows `!n` when that happens, and `tools/hosttest/ringstall.c` tests it.
 `tools/hosttest/ringcheck.c` checks the ring against the core's own output, pixel for pixel, with a deliberately
-slow and jittery display thread, and `palstress.c` checks that no colour change is ever held back.
+slow and jittery display thread, and `palstress.c` checks that no color change is ever held back.
 
 **No frame buffer.** The board has only about 300 KB of RAM and no PSRAM.
 - GB/GBC lines go straight to the ring as screen colors, so Game Boy Color "hi-color" pictures come out exactly right.

@@ -82,12 +82,18 @@ gb_pal_change_t *gb_pal_log;            /* gb_pal_log_n entries, allocated with 
 int gb_pal_log_n;
 volatile unsigned gb_pal_w, gb_pal_r;   /* written by the emulator / read by the display */
 volatile unsigned gb_pal_frame;         /* counts drawn frames */
-unsigned gb_pal_dropped;                /* colour changes the full log pushed to a later line */
+unsigned gb_pal_dropped;                /* color changes the full log pushed to a later line */
 static un16 pal_shadow[64];
 static unsigned pal_ver = 1, pal_snap_ver = 0;
 int gb_ring_lines = GB_RING;
 volatile int gb_lines_out = 144;
 volatile int gb_lines_need = 0;
+unsigned gb_ring_stalls;
+int gb_ring_wedged;     /* this frame gave up on the display; cleared at the next one */
+
+/* The board overrides this (see main.cpp) so the rest of the core keeps running
+ * while the emulator waits for the display. Nothing to do off the board. */
+__attribute__((weak)) void gb_ring_yield(void) { }
 void (*gb_line_hook)(int line, const un16 *pixels) = 0;
 
 void lcd_snap_reset() { }
@@ -224,7 +230,7 @@ static void IRAM_ATTR tilebuf()
 /* Eight pixels (one tile row) into the line. The ESP32 traps unaligned 32-bit access and
  * fixes it up in software, which is far slower than the bytes it saves, so the word path
  * is used only when both addresses are aligned - the line's start moves with the scroll,
- * so that is roughly one tile row in four. `b` is OR-ed into every pixel (the colour
+ * so that is roughly one tile row in four. `b` is OR-ed into every pixel (the color
  * palette number); it is 0 for the plain copy, and no byte can carry into the next. */
 inline static void copy8(byte *dest, const byte *src, un32 m)
 {
@@ -736,7 +742,25 @@ if (fb.enabled)
 					}
 				if (!full) pal_snap_ver = pal_ver;
 			}
-			while (L - gb_lines_need >= gb_ring_lines) { }
+			/* Wait for the display to finish with the oldest line in the ring.
+			 *
+			 * The emulator and the on-screen menu are the same task, so a wait
+			 * that never ends here is a board that stops answering its buttons.
+			 * Let the rest of the core run while waiting, and give up rather than
+			 * hang: one torn line is a glitch, a stuck emulator is a power cycle.
+			 * The display gives up on a line after 200 ms and moves on by itself,
+			 * so this only ever fires when the display is truly wedged - and once
+			 * it does, the rest of the frame goes straight through rather than
+			 * waiting again on all 144 lines. The next frame tries again. */
+			if (!gb_ring_wedged && L - gb_lines_need >= gb_ring_lines)
+			{
+				unsigned long t0 = sys_micros();
+				do {
+					gb_ring_yield();
+					if (sys_micros() - t0 > GB_RING_WAIT_US) { gb_ring_wedged = 1; break; }
+				} while (L - gb_lines_need >= gb_ring_lines);
+			}
+			if (gb_ring_wedged) gb_ring_stalls++;
 			memcpy(gb_ring[L % gb_ring_lines], BUF, 160);
 			__sync_synchronize();
 			gb_lines_out = L + 1;

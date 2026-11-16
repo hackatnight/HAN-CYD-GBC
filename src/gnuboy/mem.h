@@ -64,6 +64,9 @@ byte *gb_sram_fault(int page);
 extern byte **gb_bank_map;
 byte *gb_rom_page(int bank, int k);    /* resident page or NULL */
 byte *gb_rom_fault(int bank, int k);   /* page it in */
+#ifdef GB_TRACE_ROM
+void gb_rom_trace(int bank, int k);   /* host tracer only, see tools/hosttest/romtrace.c */
+#endif
 
 
 void mem_updatemap();

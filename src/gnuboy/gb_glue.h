@@ -18,7 +18,7 @@ typedef struct { unsigned char line, index; unsigned short color; } gb_pal_chang
 extern uint8_t (*gb_ring)[160];      /* lines of 1-byte color numbers */
 extern gb_pal_change_t *gb_pal_log;
 extern int gb_pal_log_n;
-extern unsigned gb_pal_dropped;   /* colour changes pushed to a later line (log was full) */
+extern unsigned gb_pal_dropped;   /* color changes pushed to a later line (log was full) */
 void gb_ring_line_rgb(int line, uint16_t *out);   /* display side: that line as RGB565 */
 #endif
 extern int gb_ring_lines;
@@ -57,6 +57,7 @@ int gb_plan_layout(const uint32_t *use, int nb, int slots, const short *cur, sho
 void gb_rom_stream_release(void);
 int gb_rom_stream_slots();
 extern unsigned gb_rom_faults;
+extern unsigned gb_ring_stalls;  /* lines dropped because the display stopped answering */
 int gb_rom_banks();
 /* implemented in main.cpp: read len bytes at offset of the ROM file; 0 = ok */
 int gb_rom_read(unsigned offset, uint8_t *buf, int len);
