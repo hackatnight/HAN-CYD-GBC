@@ -378,6 +378,9 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
   in *Setup → Controller* if you'd rather have the bottom button as A.
 - With a controller connected, menus show which buttons do OK and Back, using the marks on that controller:
   ◯ / ✕ on PlayStation, B / A on Xbox-style pads, A / B on Switch and 8BitDo.
+
+<p align="center"><img src="docs/images/controller-button-hints.png" width="480" alt="Menu button hints for PlayStation, Xbox-style and Nintendo-style controllers"></p>
+
 - Every menu also has a touch Back button, so you're never stuck if the controller drops out.
 
 ### Pause menu, save states and cheats
