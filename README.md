@@ -1,4 +1,4 @@
-# H@N-CYD-GBC v2.3.4: Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C
+# H@N-CYD-GBC v2.4.0: Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C
 
 Runs .gb, .gbc and .nes ROMs from the SD card on the 2.4" capacitive CYD
 (ILI9341 240x320, CST820 touch, microSD, speaker on GPIO26, no PSRAM).
@@ -95,12 +95,29 @@ bank layout (it assumed CHR-RAM was never banked, which broke MMC1 games).
 - The screen is shown at 1.5x (240x216) with touch controls underneath. Display frames are
   skipped automatically while the game itself keeps running at full speed (60 emulated fps).
 
+## Boot splash (v2.4.0)
+
+The H@N splash is drawn entirely by code (`src/splash`), with no stored image and no image
+decoder. The letters are signed distance fields computed once into a 33 KB lookup table
+that only exists while the splash runs. Their depth is 30 slices shrinking toward a vanishing
+point below the logo, darker the deeper. The face is chrome, the bevel is lit from the top
+left, stars come from a pixel hash (the same every boot), and the mist is drifting value noise.
+
+The letters fly in from the distance (fewer depth slices while moving), "hackatnight.com"
+types itself with a blinking cursor, and a shine sweeps across the chrome. It runs as a task on
+core 0 while the rest of the board starts up, and only the parts that change are redrawn.
+Tap the screen (or press BOOT) to skip it. Landscape and portrait have their own layout.
+`tools/splashtest/host.c` renders the same code on a PC.
+
 ## Controls
 
 - D-pad (8-way) on the left. A and B on the right; touching the gap between them presses both.
 - SEL and START are in the middle.
 - MENU, the BOOT button, or a controller's PS / home button pauses the game. Press it
   again (or B) to resume.
+- With a controller connected, menus show which buttons do what, using drawn PlayStation
+  symbols: Circle = OK and Cross = Back with the "Game Boy" button layout (swapped with
+  the "Xbox" layout).
 - In the game list, swipe to scroll, tap a folder to open it and a game to launch it.
   "Setup" opens the settings; on a PS4 controller the Share button does the same (the
   Setup button shows a "Share" tip in the Bluetooth build).
@@ -243,9 +260,10 @@ Core: nofrendo, as optimized by retro-go (LGPL v2, `src/nofrendo`), with these c
   headers, and "(E)", "(Europe)", "(A)", "(Australia)" or "(PAL)" in the file name selects PAL timing
 - in the touch-only build the 6502 core runs from IRAM; the BT build has no IRAM left for it
 
-Mappers 0-5, 7, 9-11, 15, 16, 18, 19, 21-25, 30-34, 40-42, 46, 50, 64-66, 70, 71, 73-76, 78,
+Mappers 0-5, 7, 9-11, 15, 16, 18, 19, 21-25, 30, 32-34, 40-42, 46, 50, 64-66, 70, 71, 73-76, 78,
 79, 85, 87, 93, 94, 119, 160, 162, 163, 176, 185, 191-195, 206, 228, 229 and 231 are supported
-(this covers the vast majority of licensed games). Famicom Disk System games are not.
+(this covers the vast majority of licensed games). Famicom Disk System games are not (mapper
+20 and the NSF music mapper 31 were removed in v2.4.0).
 Known nofrendo limits: MMC3 scanline IRQ timing is approximate, and a few demos that rely
 on exact mid-line timing don't draw.
 

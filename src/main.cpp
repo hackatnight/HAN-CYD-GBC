@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.3.4"
+#define APP_VERSION "2.4.0"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -479,8 +479,10 @@ static bool readTouch(int &x, int &y) {
 static bool bootPressed() { return digitalRead(PIN_BOOT_BTN) == LOW; }
 
 // Waits for a tap (press + release). Returns false on timeout.
+static void bottomHint(const char *label);
 static bool waitTap(int &x, int &y, uint32_t timeoutMs = 0) {
   uint32_t t0 = millis();
+  bottomHint("Continue");
   int tx, ty;
   while (readTouch(tx, ty)) delay(10);
   while (true) {
@@ -542,18 +544,248 @@ static void uiHeader(const char *title, const char *right = nullptr, const char 
   lcd.setTextDatum(top_left);
 }
 
-#include "splash_img.h"
-// H@N boot splash: one 320x240 JPEG (~24 KB of flash), scaled down to fit in portrait
-static void drawSplash() {
-  float sc = SCR_W >= 320 ? 1.0f : SCR_W / 320.0f;
-  int h = (int)(240 * sc);
-  lcd.fillScreen(C_BG);
-  lcd.drawJpg(splash_jpg, sizeof splash_jpg, 0, (SCR_H - h) / 2, SCR_W, h, 0, 0, sc, sc);
+// ---- controller button hints: PlayStation symbols drawn with code ----
+// Shown only while a controller is connected. Which symbol means OK / Back follows the
+// "Button layout" setting (Game Boy layout: Circle = OK, Cross = Back; Xbox: swapped).
+static bool padHints() { return HAVE_BT && btCount() > 0; }
+enum { ICON_CIRCLE = 0, ICON_CROSS = 1 };
+static int okIcon() { return cfg.btLayout ? ICON_CROSS : ICON_CIRCLE; }
+static int backIcon() { return cfg.btLayout ? ICON_CIRCLE : ICON_CROSS; }
+
+static void drawPadIcon(int cx, int cy, int which) {
+  if (which == ICON_CIRCLE) {
+    uint16_t c = RGB565(0xF0, 0x60, 0x68);   // PlayStation red
+    lcd.drawCircle(cx, cy, 4, c);
+    lcd.drawCircle(cx, cy, 3, c);
+  } else {
+    uint16_t c = RGB565(0x78, 0xA8, 0xF0);   // PlayStation blue
+    for (int o = 0; o < 2; o++) {
+      lcd.drawLine(cx - 4 + o, cy - 4, cx + 3 + o, cy + 3, c);
+      lcd.drawLine(cx - 4 + o, cy + 3, cx + 3 + o, cy - 4, c);
+    }
+  }
+}
+
+// "[icon] OK  [icon] Back" right-aligned at xRight in the header. Drops the words
+// (icons only), or the hints altogether, rather than cover the title.
+static void headerHints(const char *title, int xRight, const char *ok, const char *back) {
+  if (!padHints()) return;
+  lcd.setFont(&fonts::Font2);
+  int titleEnd = 8 + lcd.textWidth(title) + 8;
   lcd.setFont(&fonts::Font0);
+  struct Item { int icon; const char *label; } items[2];
+  int n = 0;
+  if (ok) items[n++] = { okIcon(), ok };
+  if (back) items[n++] = { backIcon(), back };
+  for (int withText = 1; withText >= 0; withText--) {
+    int w = 0;
+    for (int i = 0; i < n; i++) w += 10 + (withText ? lcd.textWidth(items[i].label) + 3 : 0) + (i ? 8 : 0);
+    if (xRight - w < titleEnd) continue;
+    int x = xRight - w;
+    lcd.setTextColor(C_TEXT);
+    lcd.setTextDatum(middle_left);
+    for (int i = 0; i < n; i++) {
+      if (i) x += 8;
+      drawPadIcon(x + 4, 15, items[i].icon);
+      x += 10;
+      if (withText) { lcd.drawString(items[i].label, x + 2, 15); x += lcd.textWidth(items[i].label) + 3; }
+    }
+    lcd.setTextDatum(top_left);
+    lcd.setFont(&fonts::Font2);
+    return;
+  }
+  lcd.setFont(&fonts::Font2);
+}
+
+// Small "[icon] Continue" in the bottom right corner of message screens.
+static void bottomHint(const char *label) {
+  if (!padHints()) return;
+  lcd.setFont(&fonts::Font0);
+  int w = 10 + lcd.textWidth(label) + 3;
+  int x = SCR_W - 6 - w, y = SCR_H - 9;
+  drawPadIcon(x + 4, y, okIcon());
   lcd.setTextColor(C_DIM);
-  lcd.setTextDatum(bottom_right);
-  lcd.drawString("v" APP_VERSION, SCR_W - 3, SCR_H - 2);
+  lcd.setTextDatum(middle_left);
+  lcd.drawString(label, x + 12, y);
   lcd.setTextDatum(top_left);
+  lcd.setFont(&fonts::Font2);
+}
+
+// ----------------------------------------------------------------------------
+// Boot splash: drawn by code (src/splash), animated by a task on core 0 while the
+// rest of the board starts up. Letters fly in, "hackatnight.com" types itself, a
+// shine sweeps across the chrome; stars twinkle and mist drifts until it ends.
+// ----------------------------------------------------------------------------
+#include "splash/splash.h"
+static uint16_t *dmaBuf[2];
+#define DMA_LINES 3
+#define DMA_W 320
+static volatile bool splashSkip = false, splashStop = false, splashDone = true;
+static uint8_t *spText = nullptr, *spOutline = nullptr;   // 1-bit masks for the web address
+static int spPitch = 0;
+#define SP_TEXT_H 26
+static const char *SP_TEXT = "hackatnight.com";
+
+static void spRect(const splash_frame_t &f, int x0, int y0, int x1, int y1) {
+  if (x1 < x0 || y1 < y0) return;
+  int w = x1 - x0 + 1;
+  xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.startWrite();
+  lcd.setAddrWindow(x0, y0, w, y1 - y0 + 1);
+  int chunk = 0;
+  for (int y = y0; y <= y1; y += DMA_LINES) {
+    uint16_t *out = dmaBuf[chunk++ & 1];
+    int rows = min(DMA_LINES, y1 - y + 1);
+    for (int r = 0; r < rows; r++) splash_render(&f, x0, y + r, w, out + r * w);
+    lcd.writePixelsDMA(out, w * rows, false);   // renders the next rows while this one is sent
+  }
+  lcd.waitDMA();
+  lcd.endWrite();
+  xSemaphoreGive(lcdMutex);
+}
+
+// Renders the first n letters (plus a block cursor) into the two masks, straight from
+// the font's glyph bitmaps (no sprite: keeps LovyanGFX's sprite engine out of the build).
+static inline void spSet(uint8_t *m, int x, int y) {
+  if (x >= 0 && x < SCR_W && y >= 0 && y < SP_TEXT_H) m[y * spPitch + (x >> 3)] |= 0x80 >> (x & 7);
+}
+
+static void spBuildText(int n, bool cursor) {
+  const lgfx::GFXfont &F = fonts::FreeMonoBold12pt7b;
+  const int len = strlen(SP_TEXT), base = 18;
+  int full = 0;
+  for (int i = 0; i < len; i++) full += F.glyph[SP_TEXT[i] - F.first].xAdvance;
+  int pen = (SCR_W - full) / 2;
+  memset(spText, 0, spPitch * SP_TEXT_H);
+  for (int i = 0; i < n && i < len; i++) {
+    const lgfx::GFXglyph &g = F.glyph[SP_TEXT[i] - F.first];
+    const uint8_t *bm = F.bitmap + g.bitmapOffset;
+    int bit = 0;
+    for (int yy = 0; yy < g.height; yy++)
+      for (int xx = 0; xx < g.width; xx++, bit++)
+        if (bm[bit >> 3] & (0x80 >> (bit & 7))) spSet(spText, pen + g.xOffset + xx, base + g.yOffset + yy);
+    pen += g.xAdvance;
+  }
+  if (cursor) {
+    int cw = F.glyph['m' - F.first].xAdvance;
+    for (int y = 4; y <= 21; y++)
+      for (int x = pen + 1; x < pen + cw - 1; x++) spSet(spText, x, y);
+  }
+  // outline: the text grown by 2 pixels
+  memset(spOutline, 0, spPitch * SP_TEXT_H);
+  for (int y = 0; y < SP_TEXT_H; y++)
+    for (int x = 0; x < SCR_W; x++)
+      if (spText[y * spPitch + (x >> 3)] & (0x80 >> (x & 7)))
+        for (int dy = -2; dy <= 2; dy++)
+          for (int dx = -2; dx <= 2; dx++)
+            if (abs(dx) + abs(dy) <= 3) spSet(spOutline, x + dx, y + dy);
+}
+
+static void splashTask(void *) {
+  splash_frame_t f;
+  memset(&f, 0, sizeof f);
+  f.text_mask = spText;
+  f.outline_mask = spOutline;
+  f.mask_pitch = spPitch;
+  f.text_h = SP_TEXT_H;
+  f.text_y0 = splash_text_y() - SP_TEXT_H / 2;
+  f.shine = -2000;
+  const int64_t t0 = esp_timer_get_time();
+  auto now = [&]() { return (float)((esp_timer_get_time() - t0) / 1000000.0); };
+  auto ease = [](float u) { return 1 - (1 - u) * (1 - u) * (1 - u); };
+  // ---- fly in: only the logo's rectangle is redrawn (fewer slices while moving) ----
+  int textN = -1;
+  bool textCur = false, first = true;
+  spBuildText(0, false);
+  f.text_mask = nullptr;   // no text until the letters land
+  while (!splashSkip) {
+    float T = now(), u = min(1.0f, T / 1.1f), e = ease(u);
+    f.t = T; f.g = 0.04f + 0.96f * e; f.bright = 0.25f + 0.75f * e; f.slices = 10;
+    if (first) { splash_mist_prepare(T); spRect(f, 0, 0, SCR_W - 1, SCR_H - 1); first = false; }
+    else { int x0, y0, x1, y1; splash_logo_rect(f.g, &x0, &y0, &x1, &y1); spRect(f, x0, y0, x1, y1); }
+    if (u >= 1) break;
+  }
+  // ---- landed: one full-quality frame ----
+  f.g = 1; f.bright = 1; f.slices = 30; f.t = now();
+  splash_mist_prepare(f.t);
+  if (!splashSkip) spRect(f, 0, 0, SCR_W - 1, SCR_H - 1);
+  int lx0, ly0, lx1, ly1;
+  splash_logo_rect(1, &lx0, &ly0, &lx1, &ly1);
+  const int mistTop = splash_mist_top();
+  float lastShine = -2000;
+  // ---- typewriter, shine, twinkle, mist ----
+  while (!splashSkip) {
+    float T = now();
+    f.t = T;
+    int n = min((int)strlen(SP_TEXT), (int)((T - 1.1f) / 0.075f) + 1);
+    bool cur = n < (int)strlen(SP_TEXT) || ((int)(T * 2.5f) % 2 == 0);
+    if (n != textN || cur != textCur) { spBuildText(n, cur); textN = n; textCur = cur; f.text_mask = spText; }
+    // mist band (holds the text)
+    splash_mist_prepare(T);
+    spRect(f, 0, mistTop, SCR_W - 1, SCR_H - 1);
+    // twinkling stars above the mist
+    for (int i = 0; i < splash_star_count(); i++) {
+      int x, y, big;
+      splash_star(i, &x, &y, &big);
+      if (y >= mistTop) continue;
+      if (big) spRect(f, x - 1, y - 1, x + 1, y + 1); else spRect(f, x, y, x, y);
+    }
+    // shine sweep across the chrome (2.3 - 3.2 s): redraw the strip it moved over
+    float sh = (T > 2.3f && T < 3.3f) ? -40 + (SCR_W + 80) * (T - 2.3f) / 0.9f : -2000;
+    if (sh > -1000 || lastShine > -1000) {
+      f.shine = sh;
+      float a = (lastShine > -1000 ? lastShine : sh) - 34, b = (sh > -1000 ? sh : lastShine) + 34;
+      // band: x + 0.55 y - 0.55 * shineY in [a, b]
+      for (int y = ly0; y <= min(ly1, mistTop - 1); y++) {
+        float off = 0.55f * (y - splash_shine_y());
+        int xa = max(lx0, (int)(a - off)), xb = min(lx1, (int)(b - off));
+        if (xa <= xb) spRect(f, xa, y, xb, y);
+      }
+      lastShine = sh;
+    }
+    if (T > 3.4f && splashStop) break;
+    if (T > 12.0f) break;   // never animate forever
+    vTaskDelay(1);
+  }
+  splashDone = true;
+  vTaskDelete(nullptr);
+}
+
+static void splashStart() {
+  spPitch = (SCR_W + 7) / 8;
+  spText = (uint8_t *)calloc(spPitch, SP_TEXT_H);
+  spOutline = (uint8_t *)calloc(spPitch, SP_TEXT_H);
+  if (!spText || !spOutline || splash_setup(SCR_W, SCR_H) != 0) {
+    // not enough RAM for the animation: a plain title instead
+    lcd.fillScreen(C_BG);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_TEXT, C_BG);
+    lcd.setTextDatum(middle_center);
+    lcd.setTextSize(3);
+    lcd.drawString("H@N", SCR_W / 2, SCR_H / 2 - 16);
+    lcd.setTextSize(1);
+    lcd.drawString("hackatnight.com", SCR_W / 2, SCR_H / 2 + 24);
+    lcd.setTextDatum(top_left);
+    splashDone = true;
+    return;
+  }
+  splashSkip = splashStop = splashDone = false;
+  xTaskCreatePinnedToCore(splashTask, "splash", 6144, nullptr, 1, nullptr, 0);
+}
+
+// Waits for the animation to finish (or a tap / button press to skip it), then frees it.
+static void splashFinish() {
+  splashStop = true;
+  while (!splashDone) {
+    int x, y;
+    if (readTouch(x, y) || bootPressed()) splashSkip = true;
+    delay(15);
+  }
+  int x, y;
+  while (readTouch(x, y)) delay(20);   // don't let the skip tap select a ROM
+  splash_release();
+  free(spText); spText = nullptr;
+  free(spOutline); spOutline = nullptr;
 }
 
 static void uiMessage(const char *line1, const char *line2 = nullptr, uint16_t color = C_TEXT) {
@@ -707,9 +939,6 @@ extern "C" void gb_audio_out(const uint8_t *s, int n) {
 // ----------------------------------------------------------------------------
 // Frame presentation (core 0)
 // ----------------------------------------------------------------------------
-static uint16_t *dmaBuf[2];
-#define DMA_LINES 3
-#define DMA_W 320
 static volatile bool dispBusy = false;
 static SemaphoreHandle_t frameReady;
 static volatile int fpsValue = 0;
@@ -1559,6 +1788,7 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
   };
   lcd.fillScreen(C_BG);
   uiHeader(title, headerBtn);
+  headerHints(title, headerBtn ? SCR_W - 68 : SCR_W - 6, "OK", "Back");
   for (int i = 0; i < n; i++) drawRow(i);
   btNavReset();
   int x, y;
@@ -2677,6 +2907,7 @@ static int runBrowser() {
     snprintf(title, sizeof title, "%s", rel.c_str());
   }
   uiHeader(title, "Setup", HAVE_BT ? "Share" : nullptr);   // PS4 Share = Select opens Setup
+  headerHints(title, SCR_W - 68, "Open", curDir != rootDir ? "Up" : nullptr);
   bool empty = romFiles == 0 && (roms.empty() || (roms.size() == 1 && roms[0].kind == K_UP));
   if (!sdOk) { uiMessage("No SD card found", "Insert card, then tap to retry", C_RED); }
   else if (roms.empty()) { uiMessage("No games found", "Put them in /Roms/GB, /Roms/GBC, /Roms/NES", C_RED); }
@@ -2797,8 +3028,7 @@ void setup() {
   lcd.setRgbOrder(cfg.swapRB);
   lcd.init();
   applyDisplaySettings(false);
-  drawSplash();
-  uint32_t splashT0 = millis();
+  lcd.fillScreen(C_BG);
 
   // Tell the user why the board last restarted (there's no serial monitor on a handheld)
   {
@@ -2819,14 +3049,13 @@ void setup() {
       uiMessage(why, hint, C_RED);
       int x, y;
       waitTap(x, y, 6000);
-      drawSplash();
-      splashT0 = millis();
     }
   }
 
   dmaBuf[0] = (uint16_t *)heap_caps_malloc(DMA_W * DMA_LINES * 2, MALLOC_CAP_DMA);
   dmaBuf[1] = (uint16_t *)heap_caps_malloc(DMA_W * DMA_LINES * 2, MALLOC_CAP_DMA);
   if (!dmaBuf[0] || !dmaBuf[1]) gb_fatal(__FILE__, __LINE__, "Out of memory for display buffers");
+  splashStart();   // animates on core 0 while the rest starts up
   if (gb_glue_init(AUDIO_RATE) != 0) gb_fatal(__FILE__, __LINE__, "Out of memory for audio buffer");
   gb_ring_free();   // the display ring is allocated per game (GB) or not at all (NES)
 
@@ -2841,10 +3070,7 @@ void setup() {
   if (sdOk) scanRoms();
   Serial.printf("SD %s, %d ROMs, heap free %u, largest %u\n", sdOk ? "ok" : "FAIL", (int)roms.size(),
                 heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-  // keep the splash up for at least 2.5 s (tap to skip)
-  int tx, ty;
-  while (millis() - splashT0 < 2500 && !readTouch(tx, ty)) delay(20);
-  while (readTouch(tx, ty)) delay(20);   // don't let the skip tap select a ROM
+  splashFinish();   // lets the animation finish (tap to skip) and frees its memory
 }
 
 void loop() {

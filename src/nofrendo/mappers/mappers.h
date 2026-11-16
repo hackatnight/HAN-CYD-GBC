@@ -2,7 +2,8 @@
 
 #include "../nes/mmc.h"
 
-/* mapper interfaces */
+/* mapper interfaces (H@N-CYD-GBC: 20 = Famicom Disk System and 31 = NSF music
+   removed: Disk System games need a BIOS file and .nsf files are never listed) */
 extern mapintf_t map0_intf;
 extern mapintf_t map1_intf;
 extern mapintf_t map2_intf;
@@ -17,14 +18,12 @@ extern mapintf_t map15_intf;
 extern mapintf_t map16_intf;
 extern mapintf_t map18_intf;
 extern mapintf_t map19_intf;
-extern mapintf_t map20_intf;
 extern mapintf_t map21_intf;
 extern mapintf_t map22_intf;
 extern mapintf_t map23_intf;
 extern mapintf_t map24_intf;
 extern mapintf_t map25_intf;
 extern mapintf_t map30_intf;
-extern mapintf_t map31_intf;
 extern mapintf_t map32_intf;
 extern mapintf_t map33_intf;
 extern mapintf_t map34_intf;
@@ -81,14 +80,12 @@ static const mapintf_t *mappers[] =
     &map16_intf,
     &map18_intf,
     &map19_intf,
-    &map20_intf,
     &map21_intf,
     &map22_intf,
     &map23_intf,
     &map24_intf,
     &map25_intf,
     &map30_intf,
-    &map31_intf,
     &map32_intf,
     &map33_intf,
     &map34_intf,
