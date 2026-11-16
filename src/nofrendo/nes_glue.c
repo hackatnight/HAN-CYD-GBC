@@ -248,3 +248,28 @@ int nes_state_load(const char *path)
 {
     return started ? state_load(path) : -1;
 }
+
+/* ---------------- cheats: game memory by address ----------------
+ * Searchable: work RAM 0000-07FF, then battery/work RAM 6000-7FFF when the cart has it. */
+int nes_cheat_space(void)
+{
+    if (!started) return 0;
+    return 0x800 + ((cart && cart->prg_ram && cart->prg_ram_banks > 0) ? 0x2000 : 0);
+}
+
+int nes_cheat_peek(int i)
+{
+    if (!started) return 0;
+    if (i < 0x800) return nes_getptr()->mem->ram[i];
+    return cart->prg_ram[i - 0x800];
+}
+
+unsigned nes_cheat_addr(int i) { return i < 0x800 ? (unsigned)i : 0x6000u + (unsigned)(i - 0x800); }
+
+void nes_cheat_poke(unsigned addr, int v)
+{
+    if (!started) return;
+    if (addr < 0x2000) nes_getptr()->mem->ram[addr & 0x7FF] = (uint8)v;
+    else if (addr >= 0x6000 && addr < 0x8000 && cart && cart->prg_ram && cart->prg_ram_banks > 0)
+        cart->prg_ram[addr - 0x6000] = (uint8)v;
+}

@@ -1,4 +1,4 @@
-# H@N-CYD-GBC v2.4.0: Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C
+# H@N-CYD-GBC v2.5.0: Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C
 
 Runs .gb, .gbc and .nes ROMs from the SD card on the 2.4" capacitive CYD
 (ILI9341 240x320, CST820 touch, microSD, speaker on GPIO26, no PSRAM).
@@ -53,6 +53,24 @@ write them. Many games also use their save RAM as work RAM (Super Mario Land 2, 
 and writing it every 10 s whenever it changed made the game stutter (fixed in v2.3.1 for NES,
 v2.3.3 for Game Boy).
 
+### Cheats (v2.5.0)
+
+Pause menu > **Cheats**: a small memory changer. A cheat keeps game-memory addresses at fixed
+values (infinite lives, health, money, time...), written once per frame. It costs about
+4 bytes of RAM per cheat and nothing when no cheat is on.
+
+- **Cheat files**: RetroArch-style `.cht` files (or simple `Name = CODE` lines) in
+  `/gbc/cheats/<rom name>.cht` (Game Boy / GBC) and `/gbc/cheats/nes/<rom name>.cht` (NES).
+  Codes: GameShark `ttVVLLHH` (GB/GBC; `tt` = 01, or 90-97 for a GBC work RAM bank), NES
+  Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`, or `AAAA=VV` on any system; several codes
+  joined with `+`. Game Genie codes patch the ROM rather than memory: they're listed as "n/a".
+  Switching cheats on or off writes the file back (RetroArch format).
+- **Find a cheat**: the cheat finder. Enter the value you see on screen (e.g. 3 lives),
+  play until it changes, search the new value, and repeat until a few places are left; pick
+  one and the value it should keep. The new cheat is switched on and saved to the file.
+  While searching it uses one bit per byte of game memory (NES up to 1.3 KB, GB 1 KB,
+  GBC 4 KB), freed when the game ends.
+
 ### Save states (v2.3.0)
 
 The pause menu has **Save state** and **Load state** for Game Boy, Game Boy Color and NES games:
@@ -103,7 +121,7 @@ that only exists while the splash runs. Their depth is 30 slices shrinking towar
 point below the logo, darker the deeper. The face is chrome, the bevel is lit from the top
 left, stars come from a pixel hash (the same every boot), and the mist is drifting value noise.
 
-The letters fly in from the distance (fewer depth slices while moving), "hackatnight.com"
+The logo appears in place (v2.5.0: the fly-in wasn't smooth on the board), "hackatnight.com"
 types itself with a blinking cursor, and a shine sweeps across the chrome. It runs as a task on
 core 0 while the rest of the board starts up, and only the parts that change are redrawn.
 Tap the screen (or press BOOT) to skip it. Landscape and portrait have their own layout.
@@ -115,9 +133,10 @@ Tap the screen (or press BOOT) to skip it. Landscape and portrait have their own
 - SEL and START are in the middle.
 - MENU, the BOOT button, or a controller's PS / home button pauses the game. Press it
   again (or B) to resume.
-- With a controller connected, menus show which buttons do what, using drawn PlayStation
-  symbols: Circle = OK and Cross = Back with the "Game Boy" button layout (swapped with
-  the "Xbox" layout).
+- Every menu has a touch Back button; in the Bluetooth build it shows the controller's Back
+  symbol too (drawn PlayStation symbols: Circle = OK and Cross = Back with the "Game Boy"
+  button layout, swapped with the "Xbox" layout). With a controller connected, the header
+  also shows the OK symbol. Long menus scroll (drag, or the d-pad).
 - In the game list, swipe to scroll, tap a folder to open it and a game to launch it.
   "Setup" opens the settings; on a PS4 controller the Share button does the same (the
   Setup button shows a "Share" tip in the Bluetooth build).
@@ -277,6 +296,9 @@ NES has no 1.5x mode (256 pixels is already wider than the portrait screen), so 
 
 ## Roadmap
 
+- Demoscene-style menus (copper-bar header, raster-bar highlight, sine scroller, one bitmap
+  font): mock-up GIF first.
+- Cheats: on-screen code entry, Game Genie (ROM patch) codes.
 - NES bootleg mappers, if flash allows: 91 (Street Fighter III and others) and 187
   (Street Fighter II); more as they come up. The JY Company family (90/209/211) used by many
   bootleg fighting games is a bigger job.

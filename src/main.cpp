@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.4.0"
+#define APP_VERSION "2.5.0"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -513,6 +513,7 @@ static bool waitTap(int &x, int &y, uint32_t timeoutMs = 0) {
 #define C_RED    0xF800
 #define C_GREEN  0x07E0
 
+static void uiHeaderIcon(int cx, int cy, bool back);
 static void uiHeader(const char *title, const char *right = nullptr, const char *hint = nullptr) {
   // gunmetal bar: bright top edge, steel gradient, bronze bottom edge
   for (int y = 0; y < 32; y++) {
@@ -530,6 +531,15 @@ static void uiHeader(const char *title, const char *right = nullptr, const char 
     lcd.fillRoundRect(SCR_W - 64, 4, 60, 24, 6, C_PANEL);
     lcd.setTextColor(C_TEXT, C_PANEL);
     lcd.setTextDatum(middle_center);
+#if HAVE_BT
+    if (!hint && !strcmp(right, "Back")) {
+      // touch button that also shows its controller button (works if the pad drops out)
+      uiHeaderIcon(SCR_W - 52, 16, true);
+      lcd.drawString(right, SCR_W - 28, 16);
+      lcd.setTextDatum(top_left);
+      return;
+    }
+#endif
     if (hint) {
       // small second line: the controller button that does the same (e.g. "Share")
       lcd.drawString(right, SCR_W - 34, 12);
@@ -565,6 +575,8 @@ static void drawPadIcon(int cx, int cy, int which) {
     }
   }
 }
+
+static void uiHeaderIcon(int cx, int cy, bool back) { drawPadIcon(cx, cy, back ? backIcon() : okIcon()); }
 
 // "[icon] OK  [icon] Back" right-aligned at xRight in the header. Drops the words
 // (icons only), or the hints altogether, rather than cover the title.
@@ -692,23 +704,14 @@ static void splashTask(void *) {
   f.shine = -2000;
   const int64_t t0 = esp_timer_get_time();
   auto now = [&]() { return (float)((esp_timer_get_time() - t0) / 1000000.0); };
-  auto ease = [](float u) { return 1 - (1 - u) * (1 - u) * (1 - u); };
-  // ---- fly in: only the logo's rectangle is redrawn (fewer slices while moving) ----
+  // ---- the logo appears in place (the fly-in wasn't smooth on the board) ----
   int textN = -1;
-  bool textCur = false, first = true;
-  spBuildText(0, false);
-  f.text_mask = nullptr;   // no text until the letters land
-  while (!splashSkip) {
-    float T = now(), u = min(1.0f, T / 1.1f), e = ease(u);
-    f.t = T; f.g = 0.04f + 0.96f * e; f.bright = 0.25f + 0.75f * e; f.slices = 10;
-    if (first) { splash_mist_prepare(T); spRect(f, 0, 0, SCR_W - 1, SCR_H - 1); first = false; }
-    else { int x0, y0, x1, y1; splash_logo_rect(f.g, &x0, &y0, &x1, &y1); spRect(f, x0, y0, x1, y1); }
-    if (u >= 1) break;
-  }
-  // ---- landed: one full-quality frame ----
+  bool textCur = false;
+  f.text_mask = nullptr;   // no text until the first frame is up
   f.g = 1; f.bright = 1; f.slices = 30; f.t = now();
   splash_mist_prepare(f.t);
-  if (!splashSkip) spRect(f, 0, 0, SCR_W - 1, SCR_H - 1);
+  spRect(f, 0, 0, SCR_W - 1, SCR_H - 1);
+  const float T0 = now();  // typing starts once the logo is on screen
   int lx0, ly0, lx1, ly1;
   splash_logo_rect(1, &lx0, &ly0, &lx1, &ly1);
   const int mistTop = splash_mist_top();
@@ -717,7 +720,7 @@ static void splashTask(void *) {
   while (!splashSkip) {
     float T = now();
     f.t = T;
-    int n = min((int)strlen(SP_TEXT), (int)((T - 1.1f) / 0.075f) + 1);
+    int n = min((int)strlen(SP_TEXT), (int)((T - T0) / 0.075f) + 1);
     bool cur = n < (int)strlen(SP_TEXT) || ((int)(T * 2.5f) % 2 == 0);
     if (n != textN || cur != textCur) { spBuildText(n, cur); textN = n; textCur = cur; f.text_mask = spText; }
     // mist band (holds the text)
@@ -731,7 +734,8 @@ static void splashTask(void *) {
       if (big) spRect(f, x - 1, y - 1, x + 1, y + 1); else spRect(f, x, y, x, y);
     }
     // shine sweep across the chrome (2.3 - 3.2 s): redraw the strip it moved over
-    float sh = (T > 2.3f && T < 3.3f) ? -40 + (SCR_W + 80) * (T - 2.3f) / 0.9f : -2000;
+    float st = T - T0 - 1.3f;   // shine right after the typing
+    float sh = (st > 0 && st < 1.0f) ? -40 + (SCR_W + 80) * st / 0.9f : -2000;
     if (sh > -1000 || lastShine > -1000) {
       f.shine = sh;
       float a = (lastShine > -1000 ? lastShine : sh) - 34, b = (sh > -1000 ? sh : lastShine) + 34;
@@ -743,7 +747,7 @@ static void splashTask(void *) {
       }
       lastShine = sh;
     }
-    if (T > 3.4f && splashStop) break;
+    if (T - T0 > 2.5f && splashStop) break;
     if (T > 12.0f) break;   // never animate forever
     vTaskDelay(1);
   }
@@ -1762,19 +1766,34 @@ struct MenuItem { String label; String value; };
 // controller), -3 for the controller's system button (or B when there is no header button).
 // selState keeps the controller highlight between calls.
 static int runList(const char *title, const char *headerBtn, std::vector<MenuItem> &items, int *selState = nullptr) {
+  if (!headerBtn) headerBtn = "Back";   // every list gets a touch Back button
   const int y0 = 36;
   const int n = (int)items.size();
-  const int pitch = min(34, (SCR_H - y0) / max(1, n));
+  const int avail = SCR_H - y0;
+  // rows shrink to fit; below 26 px the list scrolls instead (drag, or the d-pad)
+  int pitch = min(34, avail / max(1, n));
+  const bool scroll = pitch < 26;
+  if (scroll) pitch = 28;
+  const int visible = scroll ? avail / pitch : n;
   const int rowH = pitch - 2;
   int sel = selState ? *selState : -1;
   if (sel >= n) sel = n - 1;
+  int top = 0;
+  auto keepVisible = [&]() {
+    if (!scroll || sel < 0) return false;
+    int t = top;
+    if (sel < top) top = sel;
+    if (sel >= top + visible) top = sel - visible + 1;
+    return t != top;
+  };
+  keepVisible();
   auto drawRow = [&](int i) {
-    int y = y0 + i * pitch;
-    if (i < 0 || i >= n || y + rowH > SCR_H) return;
+    if (i < top || i >= top + visible || i >= n) return;
+    int y = y0 + (i - top) * pitch;
     bool hi = i == sel;
     uint16_t bg = hi ? C_HILITE : C_PANEL;
-    lcd.fillRoundRect(6, y, SCR_W - 12, rowH, 6, bg);
-    if (hi) lcd.drawRoundRect(6, y, SCR_W - 12, rowH, 6, C_ACCENT);
+    lcd.fillRoundRect(6, y, SCR_W - (scroll ? 14 : 12), rowH, 6, bg);
+    if (hi) lcd.drawRoundRect(6, y, SCR_W - (scroll ? 14 : 12), rowH, 6, C_ACCENT);
     lcd.setFont(&fonts::Font2);
     lcd.setTextColor(C_TEXT, bg);
     lcd.setTextDatum(middle_left);
@@ -1782,33 +1801,52 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
     if (items[i].value.length()) {
       lcd.setTextColor(C_ACCENT, bg);
       lcd.setTextDatum(middle_right);
-      lcd.drawString(items[i].value, SCR_W - 14, y + rowH / 2);
+      lcd.drawString(items[i].value, SCR_W - (scroll ? 16 : 14), y + rowH / 2);
     }
     lcd.setTextDatum(top_left);
   };
+  auto drawAll = [&]() {
+    lcd.fillRect(0, y0, SCR_W, avail, C_BG);
+    for (int i = top; i < top + visible && i < n; i++) drawRow(i);
+    if (scroll) {
+      int h = max(10, avail * visible / n);
+      int yb = y0 + (avail - h) * top / max(1, n - visible);
+      lcd.fillRect(SCR_W - 4, y0, 3, avail, C_BG);
+      lcd.fillRect(SCR_W - 4, yb, 3, h, C_ACCENT);
+    }
+  };
   lcd.fillScreen(C_BG);
   uiHeader(title, headerBtn);
-  headerHints(title, headerBtn ? SCR_W - 68 : SCR_W - 6, "OK", "Back");
-  for (int i = 0; i < n; i++) drawRow(i);
+  headerHints(title, SCR_W - 68, "OK", nullptr);   // Back has its own button (with its symbol)
+  drawAll();
   btNavReset();
   int x, y;
   while (readTouch(x, y)) delay(10);
   auto finish = [&](int r) { if (selState) *selState = sel; return r; };
   while (true) {
     if (readTouch(x, y)) {
-      while (readTouch(x, y)) delay(10);
-      if (y < 32 && headerBtn && x > SCR_W - 70) return finish(-1);
-      if (y >= y0) {
-        int i = (y - y0) / pitch;
-        if (i >= 0 && i < n) { sel = i; return finish(i); }
+      int sx = x, sy = y, moved = 0, topAtStart = top;
+      while (readTouch(x, y)) {
+        moved = max(moved, abs(y - sy));
+        if (scroll && moved > 10 && sy >= y0) {
+          int nt = constrain(topAtStart - (y - sy) / (pitch / 2), 0, max(0, n - visible));
+          if (nt != top) { top = nt; drawAll(); }
+        }
+        delay(15);
+      }
+      if (moved > 10) continue;
+      if (sy < 32 && sx > SCR_W - 70) return finish(-1);
+      if (sy >= y0) {
+        int i = top + (sy - y0) / pitch;
+        if (i >= 0 && i < n && i < top + visible) { sel = i; return finish(i); }
       }
       continue;
     }
     switch (btNav()) {
-      case NAV_UP:   { int o = sel; sel = sel <= 0 ? n - 1 : sel - 1; drawRow(o); drawRow(sel); break; }
-      case NAV_DOWN: { int o = sel; sel = (sel < 0 || sel >= n - 1) ? 0 : sel + 1; drawRow(o); drawRow(sel); break; }
-      case NAV_OK:   if (sel < 0) { sel = 0; drawRow(0); } else return finish(sel); break;
-      case NAV_BACK: return finish(headerBtn ? -1 : -3);
+      case NAV_UP:   { int o = sel; sel = sel <= 0 ? n - 1 : sel - 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
+      case NAV_DOWN: { int o = sel; sel = (sel < 0 || sel >= n - 1) ? 0 : sel + 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
+      case NAV_OK:   if (sel < 0) { sel = top; drawRow(sel); } else return finish(sel); break;
+      case NAV_BACK: return finish(-1);
       case NAV_SYS:  return finish(-3);
       default: break;
     }
@@ -2132,6 +2170,395 @@ static void settingsMenu() {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Cheats: a small memory changer. A cheat keeps game-memory addresses at fixed
+// values, written once per frame (infinite lives, health, money, time...). Codes come
+// from a RetroArch-style .cht file on the SD card or from the built-in cheat finder.
+//   Game Boy / GBC: GameShark "ttVVLLHH" (tt = 01, or 90-97 for a GBC work RAM bank),
+//                   or "AAAA=VV"
+//   NES:            Pro Action Replay "AAAA:VV", "AAAAVV" or "00AAAAVV"
+// Game Genie codes patch the ROM instead; they're listed but can't be switched on.
+// Files: /gbc/cheats/<rom name>.cht (GB/GBC), /gbc/cheats/nes/<rom name>.cht (NES)
+// ----------------------------------------------------------------------------
+struct CheatCode { uint8_t bank; uint16_t addr; uint8_t val; };
+struct Cheat {
+  String desc, code;
+  bool on = false, ok = false;
+  uint8_t n = 0;
+  CheatCode c[4];
+};
+static std::vector<Cheat> cheats;
+static String cheatPath;
+static bool cheatsDirty = false, cheatsActive = false;
+#define MAX_CHEATS 48
+
+static bool isHexStr(const String &s) {
+  if (!s.length()) return false;
+  for (size_t i = 0; i < s.length(); i++) if (!isxdigit((unsigned char)s[i])) return false;
+  return true;
+}
+static int hexAt(const String &s, int from, int len) { return (int)strtol(s.substring(from, from + len).c_str(), nullptr, 16); }
+
+static bool parseCheat(Cheat &ch, bool nes) {
+  ch.n = 0;
+  String all = ch.code;
+  int start = 0;
+  while (start <= (int)all.length() && ch.n < 4) {
+    int plus = all.indexOf('+', start);
+    String part = all.substring(start, plus < 0 ? all.length() : plus);
+    start = plus < 0 ? all.length() + 1 : plus + 1;
+    part.trim();
+    part.toUpperCase();
+    part.replace(" ", "");
+    if (!part.length()) continue;
+    CheatCode cc = { 0xFF, 0, 0 };
+    int sep = part.indexOf(':') >= 0 ? part.indexOf(':') : part.indexOf('=');
+    if (sep > 0) {                                         // AAAA:VV / AAAA=VV
+      String a = part.substring(0, sep), v = part.substring(sep + 1);
+      if (!isHexStr(a) || !isHexStr(v) || a.length() > 4 || v.length() > 2) return false;
+      cc.addr = (uint16_t)strtol(a.c_str(), nullptr, 16);
+      cc.val = (uint8_t)strtol(v.c_str(), nullptr, 16);
+    } else if (!isHexStr(part)) {
+      return false;                                        // Game Genie letters etc.
+    } else if (!nes && part.length() == 8) {               // GameShark ttVVLLHH
+      int tt = hexAt(part, 0, 2);
+      cc.val = (uint8_t)hexAt(part, 2, 2);
+      cc.addr = (uint16_t)(hexAt(part, 6, 2) << 8 | hexAt(part, 4, 2));
+      if (tt >= 0x90 && tt <= 0x97) cc.bank = tt & 7;
+    } else if (nes && part.length() == 6) {                // AAAAVV
+      cc.addr = (uint16_t)hexAt(part, 0, 4);
+      cc.val = (uint8_t)hexAt(part, 4, 2);
+    } else if (nes && part.length() == 8) {                // 00AAAAVV
+      cc.addr = (uint16_t)hexAt(part, 2, 4);
+      cc.val = (uint8_t)hexAt(part, 6, 2);
+    } else {
+      return false;
+    }
+    ch.c[ch.n++] = cc;
+  }
+  return ch.n > 0;
+}
+
+static void cheatsUpdateActive() {
+  cheatsActive = false;
+  for (auto &c : cheats) if (c.on && c.ok) cheatsActive = true;
+}
+
+static String unquote(String v) {
+  v.trim();
+  if (v.length() >= 2 && v[0] == '"' && v[v.length() - 1] == '"') v = v.substring(1, v.length() - 1);
+  return v;
+}
+
+static void cheatsLoad(bool nes, const String &base) {
+  cheats.clear();
+  cheatsDirty = false;
+  cheatPath = (nes ? "/gbc/cheats/nes/" : "/gbc/cheats/") + base + ".cht";
+  File f = SD.open(cheatPath, FILE_READ);
+  if (f) {
+    while (f.available()) {
+      String line = f.readStringUntil('\n');
+      line.trim();
+      if (!line.length() || line[0] == '#') continue;
+      int eq = line.indexOf('=');
+      if (eq < 0) {                                       // a bare code
+        if (cheats.size() < MAX_CHEATS) { Cheat c; c.desc = line; c.code = line; cheats.push_back(c); }
+        continue;
+      }
+      String key = line.substring(0, eq), val = unquote(line.substring(eq + 1));
+      key.trim();
+      int us = key.indexOf('_');
+      if (key.startsWith("cheat") && us > 5) {            // RetroArch: cheatN_desc / _code / _enable
+        int idx = key.substring(5, us).toInt();
+        String field = key.substring(us + 1);
+        if (idx < 0 || idx >= MAX_CHEATS) continue;
+        while ((int)cheats.size() <= idx) cheats.push_back(Cheat());
+        if (field == "desc") cheats[idx].desc = val;
+        else if (field == "code") cheats[idx].code = val;
+        else if (field == "enable") cheats[idx].on = val == "true";
+      } else if (key != "cheats" && cheats.size() < MAX_CHEATS) {   // "Name = CODE"
+        Cheat c; c.desc = key; c.code = val; cheats.push_back(c);
+      }
+    }
+    f.close();
+  }
+  for (size_t i = 0; i < cheats.size();) {
+    if (!cheats[i].code.length()) { cheats.erase(cheats.begin() + i); continue; }
+    if (!cheats[i].desc.length()) cheats[i].desc = cheats[i].code;
+    cheats[i].ok = parseCheat(cheats[i], nes);
+    if (!cheats[i].ok) cheats[i].on = false;
+    i++;
+  }
+  cheatsUpdateActive();
+  if (cheats.size()) Serial.printf("Cheats: %d from %s\n", (int)cheats.size(), cheatPath.c_str());
+}
+
+static bool cheatsSave() {
+  SD.mkdir("/gbc");
+  SD.mkdir("/gbc/cheats");
+  SD.mkdir("/gbc/cheats/nes");
+  File f = SD.open(cheatPath, FILE_WRITE);
+  if (!f) return false;
+  f.printf("cheats = %d\n\n", (int)cheats.size());
+  for (size_t i = 0; i < cheats.size(); i++) {
+    f.printf("cheat%d_desc = \"%s\"\n", (int)i, cheats[i].desc.c_str());
+    f.printf("cheat%d_code = \"%s\"\n", (int)i, cheats[i].code.c_str());
+    f.printf("cheat%d_enable = %s\n\n", (int)i, cheats[i].on ? "true" : "false");
+  }
+  f.close();
+  cheatsDirty = false;
+  return true;
+}
+
+// once per frame, before the frame runs
+static void cheatsApply() {
+  if (!cheatsActive) return;
+  for (auto &ch : cheats) {
+    if (!ch.on || !ch.ok) continue;
+    for (int k = 0; k < ch.n; k++) {
+      if (vSys == SYS_NES) nes_cheat_poke(ch.c[k].addr, ch.c[k].val);
+      else gb_cheat_poke(ch.c[k].bank, ch.c[k].addr, ch.c[k].val);
+    }
+  }
+}
+
+// ---- cheat finder: narrow down which memory byte holds a value seen on screen ----
+// One bit per searchable byte (NES: 256 B to 1.3 KB, GB: 1 KB, GBC: 4 KB), only while searching.
+static uint8_t *findMask = nullptr;
+static int findSpace = 0, findCount = 0;
+
+static int cheatSpace() { return vSys == SYS_NES ? nes_cheat_space() : gb_cheat_space(); }
+static int cheatPeek(int i) { return vSys == SYS_NES ? nes_cheat_peek(i) : gb_cheat_peek(i); }
+
+static void findFree() { free(findMask); findMask = nullptr; findSpace = findCount = 0; }
+
+static bool findStart(int v) {
+  findFree();
+  findSpace = cheatSpace();
+  findMask = (uint8_t *)calloc((findSpace + 7) / 8, 1);
+  if (!findMask) return false;
+  for (int i = 0; i < findSpace; i++)
+    if (cheatPeek(i) == v) { findMask[i >> 3] |= 1 << (i & 7); findCount++; }
+  return true;
+}
+
+static void findRefine(int v) {
+  findCount = 0;
+  for (int i = 0; i < findSpace; i++)
+    if (findMask[i >> 3] & (1 << (i & 7))) {
+      if (cheatPeek(i) == v) findCount++;
+      else findMask[i >> 3] &= ~(1 << (i & 7));
+    }
+}
+
+static void cheatsReset() {   // game ends
+  if (cheatsDirty) cheatsSave();
+  cheats.clear();
+  cheats.shrink_to_fit();
+  cheatsActive = false;
+  findFree();
+}
+
+// Number entry 0-255 with touch buttons (-10 -1 +1 +10, OK) or the d-pad
+// (left/right = 1, up/down = 10). Returns -1 if cancelled.
+static int pickNumber(const char *title, const char *prompt, int value) {
+  value = constrain(value, 0, 255);
+  const int bw = (SCR_W - 5 * 8) / 4, bh = 40, by = SCR_H / 2 + 6, oky = SCR_H - 48;
+  static const char *lab[4] = { "-10", "-1", "+1", "+10" };
+  static const int step[4] = { -10, -1, 1, 10 };
+  lcd.fillScreen(C_BG);
+  uiHeader(title, "Back");
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_DIM, C_BG);
+  lcd.setTextDatum(middle_center);
+  lcd.drawString(prompt, SCR_W / 2, 52);
+  for (int i = 0; i < 4; i++) {
+    int x = 8 + i * (bw + 8);
+    lcd.fillRoundRect(x, by, bw, bh, 6, C_PANEL);
+    lcd.setTextColor(C_TEXT, C_PANEL);
+    lcd.drawString(lab[i], x + bw / 2, by + bh / 2);
+  }
+  lcd.fillRoundRect(8, oky, SCR_W - 16, 38, 6, C_HILITE);
+  lcd.drawRoundRect(8, oky, SCR_W - 16, 38, 6, C_ACCENT);
+#if HAVE_BT
+  drawPadIcon(SCR_W / 2 - 22, oky + 19, okIcon());
+  lcd.setTextColor(C_TEXT, C_HILITE);
+  lcd.drawString("OK", SCR_W / 2 + 4, oky + 19);
+#else
+  lcd.setTextColor(C_TEXT, C_HILITE);
+  lcd.drawString("OK", SCR_W / 2, oky + 19);
+#endif
+  auto drawValue = [&]() {
+    lcd.fillRect(0, 70, SCR_W, by - 74, C_BG);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextSize(3);
+    lcd.setTextColor(C_TEXT, C_BG);
+    lcd.setTextDatum(middle_center);
+    char b[16];
+    snprintf(b, sizeof b, "%d", value);
+    lcd.drawString(b, SCR_W / 2, (70 + by) / 2);
+    lcd.setTextSize(1);
+    snprintf(b, sizeof b, "(hex %02X)", value);
+    lcd.setTextColor(C_DIM, C_BG);
+    lcd.drawString(b, SCR_W / 2, by - 12);
+  };
+  drawValue();
+  btNavReset();
+  int x, y;
+  while (readTouch(x, y)) delay(10);
+  while (true) {
+    int nv = value;
+    if (readTouch(x, y)) {
+      while (readTouch(x, y)) delay(10);
+      if (y < 32 && x > SCR_W - 70) { lcd.setTextDatum(top_left); return -1; }
+      if (y >= oky && y < oky + 38) { lcd.setTextDatum(top_left); return value; }
+      if (y >= by && y < by + bh) {
+        int i = (x - 8) / (bw + 8);
+        if (i >= 0 && i < 4) nv = value + step[i];
+      }
+    }
+    switch (btNav()) {
+      case NAV_LEFT: nv = value - 1; break;
+      case NAV_RIGHT: nv = value + 1; break;
+      case NAV_UP: nv = value + 10; break;
+      case NAV_DOWN: nv = value - 10; break;
+      case NAV_OK: lcd.setTextDatum(top_left); return value;
+      case NAV_BACK: case NAV_SYS: lcd.setTextDatum(top_left); return -1;
+      default: break;
+    }
+    nv = constrain(nv, 0, 255);
+    if (nv != value) { value = nv; drawValue(); }
+    delay(10);
+  }
+}
+
+static void cheatNote(const char *l1, const char *l2, uint16_t c = C_TEXT) {
+  lcd.fillScreen(C_BG);
+  uiHeader("Cheats");
+  uiMessage(l1, l2, c);
+  int x, y; waitTap(x, y, 6000);
+}
+
+static String hex4(unsigned a) { char b[8]; snprintf(b, sizeof b, "%04X", a & 0xFFFF); return String(b); }
+
+// Turns finder match i into a saved, switched-on cheat.
+static void findLock(int i) {
+  int cur = cheatPeek(i);
+  int v = pickNumber("Lock value", "Keep it at this value", cur);
+  if (v < 0) return;
+  unsigned a = vSys == SYS_NES ? nes_cheat_addr(i) : gb_cheat_addr(i);
+  unsigned addr = a & 0xFFFF, bank = a >> 16;
+  Cheat c;
+  char code[16];
+  if (vSys == SYS_NES) {
+    snprintf(code, sizeof code, "%04X:%02X", addr, v);
+  } else {
+    int tt = (gb_is_cgb() && addr >= 0xD000 && addr < 0xE000) ? 0x90 | bank : 0x01;
+    snprintf(code, sizeof code, "%02X%02X%02X%02X", tt, v, addr & 0xFF, addr >> 8);   // GameShark
+  }
+  c.code = code;
+  c.desc = "Found " + hex4(addr) + " = " + String(v);
+  c.on = true;
+  c.ok = parseCheat(c, vSys == SYS_NES);
+  if (cheats.size() >= MAX_CHEATS) { cheatNote("Cheat list is full", "Remove some from the .cht file", C_RED); return; }
+  cheats.push_back(c);
+  cheatsUpdateActive();
+  bool ok = cheatsSave();
+  findFree();
+  cheatNote(ok ? "Cheat added and switched on" : "Cheat on (couldn't save file)", c.desc.c_str(), ok ? C_GREEN : C_RED);
+}
+
+static void cheatFinder() {
+  if (!findMask) {
+    int v = pickNumber("Find a cheat", "Value on screen now (e.g. lives)", 3);
+    if (v < 0) return;
+    if (!findStart(v)) { cheatNote("Not enough memory to search", nullptr, C_RED); return; }
+    char b[48];
+    snprintf(b, sizeof b, "%d places hold %d", findCount, v);
+    cheatNote(b, "Play until it changes, then search again");
+    return;
+  }
+  while (findMask) {
+    std::vector<MenuItem> it = {
+      { "Search the new value", String(findCount) + " left" },
+      { "Show the matches", findCount <= 16 ? String(">") : String("too many") },
+      { "Start over", "" },
+    };
+    static int selF = -1;
+    int i = runList("Find a cheat", "Back", it, &selF);
+    if (i < 0) return;
+    if (i == 0) {
+      int v = pickNumber("Find a cheat", "Value on screen now", 0);
+      if (v < 0) continue;
+      findRefine(v);
+      if (findCount == 0) { findFree(); cheatNote("No matches left", "Start over with a new search", C_RED); return; }
+      char b[48];
+      snprintf(b, sizeof b, "%d place%s left", findCount, findCount == 1 ? "" : "s");
+      cheatNote(b, findCount <= 16 ? "Show the matches to lock one" : "Play until it changes again");
+      if (findCount > 16) return;
+    } else if (i == 1) {
+      if (findCount > 16) { cheatNote("Too many matches to list", "Search again after it changes"); continue; }
+      std::vector<MenuItem> m;
+      std::vector<int> idx;
+      for (int k = 0; k < findSpace; k++)
+        if (findMask[k >> 3] & (1 << (k & 7))) {
+          unsigned a = vSys == SYS_NES ? nes_cheat_addr(k) : gb_cheat_addr(k);
+          String lab = hex4(a & 0xFFFF);
+          if (a >> 16) lab += " (bank " + String(a >> 16) + ")";
+          m.push_back({ lab, "= " + String(cheatPeek(k)) });
+          idx.push_back(k);
+        }
+      static int selM = -1;
+      int j = runList("Matches: pick one", "Back", m, &selM);
+      if (j >= 0 && j < (int)idx.size()) { findLock(idx[j]); return; }
+    } else {
+      findFree();
+      cheatFinder();
+      return;
+    }
+  }
+}
+
+static String cheatsLabel() {
+  int on = 0;
+  for (auto &c : cheats) if (c.on && c.ok) on++;
+  return on ? String(on) + " on" : String(">");
+}
+
+static void cheatsMenu() {
+  while (true) {
+    std::vector<MenuItem> it;
+    for (auto &c : cheats) {
+      String d = c.desc;
+      if (d.length() > 22) d = d.substring(0, 21) + "~";
+      it.push_back({ d, c.ok ? String(c.on ? "On" : "Off") : String("n/a") });
+    }
+    int nc = (int)cheats.size();
+    it.push_back({ "Find a cheat...", findMask ? String(findCount) + " left" : String("") });
+    bool anyOn = false;
+    for (auto &c : cheats) anyOn |= c.on;
+    if (anyOn) it.push_back({ "All cheats off", "" });
+    static int selC = -1;
+    int i = runList(nc ? "Cheats" : "Cheats (no file yet)", "Back", it, &selC);
+    if (i < 0) break;
+    if (i < nc) {
+      if (!cheats[i].ok) {
+        cheatNote("This code type can't be used", "Game Genie codes patch the ROM", C_DIM);
+      } else {
+        cheats[i].on = !cheats[i].on;
+        cheatsDirty = true;
+      }
+    } else if (i == nc) {
+      cheatFinder();
+    } else {
+      for (auto &c : cheats) c.on = false;
+      cheatsDirty = true;
+    }
+    cheatsUpdateActive();
+  }
+  if (cheatsDirty) cheatsSave();
+}
+
 enum PauseResult { P_RESUME, P_RESET, P_QUIT };
 
 // ---- save states (one slot per game, next to the battery saves) ----
@@ -2186,6 +2613,7 @@ static PauseResult pauseMenu() {
       { "Resume", "" },
       { "Save state", haveState ? "replace" : "" },
       { "Load state", haveState ? "" : "empty" },
+      { "Cheats", cheatsLabel() },
       { "Write battery save", sram ? String(sram / 1024) + "KB" + (gb_sram_slots() < gb_sram_pages() ? " (paged)" : "")
                                    : String("n/a") },
       { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
@@ -2198,6 +2626,7 @@ static PauseResult pauseMenu() {
     static int selPause = -1;
     int i = runList(gb_rom_title(), nullptr, it, &selPause);
     switch (i) {
+      case -1:
       case -3:
       case 0: return P_RESUME;
       case 1: {
@@ -2222,7 +2651,8 @@ static PauseResult pauseMenu() {
         stateMessage("State file damaged", "The game was restarted", C_RED, 1800);
         return P_RESET;
       }
-      case 3:
+      case 3: cheatsMenu(); break;
+      case 4:
         if (sram) { bool ok = sramSave(); uiMessage(ok ? "Saved" : "Save FAILED", savePath.c_str(), ok ? C_GREEN : C_RED); delay(900); }
         else {
           // the original cartridge had no save memory: the game uses passwords or doesn't save
@@ -2230,14 +2660,14 @@ static PauseResult pauseMenu() {
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 4: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
-      case 5: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
-      case 6:
+      case 5: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 6: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
+      case 7:
         if (!gb_is_cgb()) { cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; lcd_set_dmg_palette(DMG_PALETTES[cfg.dmgPalette]); saveSettings(); }
         break;
-      case 7: cfg.showFps ^= 1; saveSettings(); break;
-      case 8: return P_RESET;
-      case 9: return P_QUIT;
+      case 8: cfg.showFps ^= 1; saveSettings(); break;
+      case 9: return P_RESET;
+      case 10: return P_QUIT;
     }
   }
 }
@@ -2302,6 +2732,7 @@ static void runGame(const RomEntry &r) {
   savePath = "/gbc/saves/" + b + ".sav";
   rtcPath = "/gbc/saves/" + b + ".rtc";
   statePath = "/gbc/saves/" + b + ".st0";
+  cheatsLoad(false, b);
 
   vSys = SYS_GB; srcW = 160; srcH = 144;
   gb_glue_init(AUDIO_RATE);
@@ -2442,6 +2873,7 @@ static void runGame(const RomEntry &r) {
     }
 
     // ---- emulate one frame ----
+    cheatsApply();
     bool render = renderThis && !dispBusy;
     gb_set_framebuffer(nullptr, render);
     gb_run_vblank();              // for a drawn frame this resets the line handoff
@@ -2509,6 +2941,7 @@ static void runGame(const RomEntry &r) {
   audioStop();
   waitDisplayIdle();
   sramSave();
+  cheatsReset();
   gb_free_game_memory();
   gb_ring_free();
   saveBankUse();
@@ -2561,6 +2994,7 @@ static PauseResult nesPauseMenu(const char *title) {
       { "Resume", "" },
       { "Save state", haveState ? "replace" : "" },
       { "Load state", haveState ? "" : "empty" },
+      { "Cheats", cheatsLabel() },
       { "Write battery save", sram ? String(sram / 1024) + "KB" : String("n/a") },
       { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
       { "Scaling", scaleName() },
@@ -2572,6 +3006,7 @@ static PauseResult nesPauseMenu(const char *title) {
     static int selPause = -1;
     int i = runList(title, nullptr, it, &selPause);
     switch (i) {
+      case -1:
       case -3:
       case 0: return P_RESUME;
       case 1: {
@@ -2593,23 +3028,24 @@ static PauseResult nesPauseMenu(const char *title) {
         stateMessage("State file damaged", "The game was restarted", C_RED, 1800);
         return P_RESUME;
       }
-      case 3:
+      case 3: cheatsMenu(); break;
+      case 4:
         if (sram) { bool ok = nesSramSave(true); uiMessage(ok ? "Saved" : "Save FAILED", nesSavePath.c_str(), ok ? C_GREEN : C_RED); delay(900); }
         else {
           uiMessage("This game has no save memory", "It uses passwords or can't save", C_DIM);
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 4: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
-      case 5: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
-      case 6:
+      case 5: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 6: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
+      case 7:
         cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES;
         nes_build_palette(cfg.nesPalette, nes_pal565);
         saveSettings();
         break;
-      case 7: cfg.showFps ^= 1; saveSettings(); break;
-      case 8: return P_RESET;
-      case 9: return P_QUIT;
+      case 8: cfg.showFps ^= 1; saveSettings(); break;
+      case 9: return P_RESET;
+      case 10: return P_QUIT;
     }
   }
 }
@@ -2630,6 +3066,7 @@ static void runNes(const RomEntry &r) {
   String b = baseName(String(r.name()));
   nesSavePath = "/gbc/saves/nes/" + b + ".sav";
   statePath = "/gbc/saves/nes/" + b + ".st0";
+  cheatsLoad(true, b);
   bool pal = b.indexOf("(E)") >= 0 || b.indexOf("(Europe)") >= 0 || b.indexOf("(A)") >= 0 ||
              b.indexOf("(Australia)") >= 0 || b.indexOf("(PAL)") >= 0;
   int mapper = (romPtr[6] >> 4) | (romPtr[7] & 0xF0);
@@ -2751,6 +3188,7 @@ static void runNes(const RomEntry &r) {
     }
 
     // ---- emulate one frame ----
+    cheatsApply();
     bool render = renderThis && !dispBusy;
     if (render) {                 // the display draws lines as the emulator finishes them
       nes_begin_frame();
@@ -2814,6 +3252,7 @@ static void runNes(const RomEntry &r) {
   audioStop();
   waitDisplayIdle();
   nesSramSave(false);
+  cheatsReset();
   nes_stop();
   unmapRom();
   vSys = SYS_GB; srcW = 160; srcH = 144;
@@ -2850,7 +3289,12 @@ static void drawBrowser() {
     lcd.setTextDatum(middle_left);
     if (e.kind == K_UP) {
       lcd.setTextColor(C_DIM, bg);
+#if HAVE_BT
+      drawPadIcon(16, y + rowH / 2, backIcon());
+      lcd.drawString("Back", 28, y + rowH / 2);
+#else
       lcd.drawString("< Back", 10, y + rowH / 2);
+#endif
       continue;
     }
     if (e.kind == K_MORE) {

@@ -42,6 +42,12 @@ uint32_t nes_sram_sum(void);         /* cheap checksum to spot changes */
 int nes_state_save(const char *path);
 int nes_state_load(const char *path);
 
+/* cheats: search space (work RAM, then 6000-7FFF RAM if present) and pokes */
+int nes_cheat_space(void);
+int nes_cheat_peek(int i);
+unsigned nes_cheat_addr(int i);
+void nes_cheat_poke(unsigned addr, int v);
+
 #ifdef __cplusplus
 }
 #endif

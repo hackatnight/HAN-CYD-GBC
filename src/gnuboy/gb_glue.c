@@ -610,3 +610,62 @@ void gb_sram_reload(void)
 	ram.sdirty = 0;
 	ram.sram_dirty = 0;
 }
+
+/* ---------------- cheats: game memory by address ----------------
+ * The finder searches work RAM (2 or 8 banks of 4 KB) and high RAM (FF80-FFFE);
+ * cheats can also write cartridge RAM (A000-BFFF). */
+int gb_cheat_space(void) { return (hw.cgb ? 8 : 2) * 4096 + 127; }
+
+int gb_cheat_peek(int i)
+{
+	int banks = hw.cgb ? 8 : 2;
+	if (i < banks * 4096) return ram.ibank[i >> 12] ? ram.ibank[i >> 12][i & 4095] : 0;
+	return ram.hi[0x80 + (i - banks * 4096)];
+}
+
+/* (bank << 16) | address of search index i; bank 0 = C000-CFFF, 1-7 = D000-DFFF */
+unsigned gb_cheat_addr(int i)
+{
+	int banks = hw.cgb ? 8 : 2;
+	if (i < banks * 4096)
+	{
+		int b = i >> 12;
+		return ((unsigned)b << 16) | (b ? 0xD000u : 0xC000u) | (unsigned)(i & 4095);
+	}
+	return 0xFF80u + (unsigned)(i - banks * 4096);
+}
+
+/* bank: 1-7 = that work RAM bank for D000-DFFF, anything else = the bank in use */
+void gb_cheat_poke(int bank, unsigned addr, int v)
+{
+	int banks = hw.cgb ? 8 : 2;
+	if (addr >= 0xE000 && addr < 0xFE00) addr -= 0x2000;   /* echo RAM */
+	if (addr >= 0xC000 && addr < 0xD000)
+	{
+		if (ram.ibank[0]) ram.ibank[0][addr & 0xFFF] = (byte)v;
+	}
+	else if (addr >= 0xD000 && addr < 0xE000)
+	{
+		int b = (bank >= 1 && bank <= 7) ? bank : (R_SVBK & gb_svbk_mask);
+		if (b == 0 || b >= banks) b = 1;
+		if (ram.ibank[b]) ram.ibank[b][addr & 0xFFF] = (byte)v;
+	}
+	else if (addr >= 0xFF80 && addr < 0xFFFF)
+	{
+		ram.hi[addr & 0xFF] = (byte)v;
+	}
+	else if (addr >= 0xA000 && addr < 0xC000 && ram.spages > 0)
+	{
+		int p = ((mbc.rambank < mbc.ramsize ? mbc.rambank : 0) << 1) | ((addr >> 12) & 1);
+		if (p < ram.spages)
+		{
+			byte *pg = ram.spage[p] ? ram.spage[p] : gb_sram_fault(p);
+			if (pg[addr & 0xFFF] != (byte)v)
+			{
+				pg[addr & 0xFFF] = (byte)v;
+				ram.sdirty |= 1u << p;
+				ram.sram_dirty = 1;
+			}
+		}
+	}
+}

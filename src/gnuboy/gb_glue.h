@@ -68,6 +68,11 @@ int gb_state_save(gb_io_fn write, void *ctx);
 int gb_state_load(gb_io_fn read, void *ctx);
 long gb_state_size(void);
 void gb_sram_reload(void);
+/* cheats (gb_glue.c) */
+int gb_cheat_space(void);
+int gb_cheat_peek(int i);
+unsigned gb_cheat_addr(int i);
+void gb_cheat_poke(int bank, unsigned addr, int v);
 /* gnuboy */
 int rom_load(const uint8_t *data, int len);
 void loader_unload();
