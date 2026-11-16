@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.5.1"
+#define APP_VERSION "2.5.2"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -1260,7 +1260,8 @@ static bool isCgbName(const char *n) {
 
 static bool hiddenDir(const String &n) {
   String l = n; l.toLowerCase();
-  return l.startsWith(".") || l == "system volume information" || l == "saves";
+  return l.startsWith(".") || l == "system volume information" || l == "saves" ||
+         l == "cheats";   // /CHEATS: read by the emulator, never listed
 }
 
 static String parentDir(const String &d) {
@@ -2179,7 +2180,8 @@ static void settingsMenu() {
 //                   or "AAAA=VV"
 //   NES:            Pro Action Replay "AAAA:VV", "AAAAVV" or "00AAAAVV"
 // Game Genie codes patch the ROM instead; they're listed but can't be switched on.
-// Files: /gbc/cheats/<rom name>.cht (GB/GBC), /gbc/cheats/nes/<rom name>.cht (NES)
+// Files: /CHEATS/GB, /CHEATS/GBC and /CHEATS/NES, one <game name>.cht per game. GB and
+// GBC games look in both GB folders, .gbc files trying GBC first.
 // ----------------------------------------------------------------------------
 struct CheatCode { uint8_t bank; uint16_t addr; uint8_t val; };
 struct Cheat {
@@ -2292,10 +2294,19 @@ static String findCheatFile(const String &dir, const String &base) {
   return prefixCount == 1 ? prefixHit : exact;
 }
 
-static void cheatsLoad(bool nes, const String &base) {
+#define CHEAT_ROOT "/CHEATS"
+
+// sys: 0 = GB, 1 = GBC, 2 = NES. The path is where cheats are read from and saved to.
+static void cheatsLoad(int sys, const String &base) {
+  const bool nes = sys == 2;
   cheats.clear();
   cheatsDirty = false;
-  cheatPath = findCheatFile(nes ? "/gbc/cheats/nes/" : "/gbc/cheats/", base);
+  static const char *const dirs[] = { CHEAT_ROOT "/GB/", CHEAT_ROOT "/GBC/", CHEAT_ROOT "/NES/" };
+  cheatPath = findCheatFile(dirs[sys], base);
+  if (sys < 2 && !SD.exists(cheatPath)) {
+    String other = findCheatFile(dirs[sys ^ 1], base);
+    if (SD.exists(other)) cheatPath = other;
+  }
   File f = SD.open(cheatPath, FILE_READ);
   if (f) {
     while (f.available()) {
@@ -2336,9 +2347,8 @@ static void cheatsLoad(bool nes, const String &base) {
 }
 
 static bool cheatsSave() {
-  SD.mkdir("/gbc");
-  SD.mkdir("/gbc/cheats");
-  SD.mkdir("/gbc/cheats/nes");
+  SD.mkdir(CHEAT_ROOT);
+  SD.mkdir(cheatPath.substring(0, cheatPath.lastIndexOf('/')));
   File f = SD.open(cheatPath, FILE_WRITE);
   if (!f) return false;
   f.printf("cheats = %d\n\n", (int)cheats.size());
@@ -2774,7 +2784,8 @@ static void runGame(const RomEntry &r) {
   savePath = "/gbc/saves/" + b + ".sav";
   rtcPath = "/gbc/saves/" + b + ".rtc";
   statePath = "/gbc/saves/" + b + ".st0";
-  cheatsLoad(false, b);
+  String ext = String(r.name()); ext.toLowerCase();
+  cheatsLoad(ext.endsWith(".gbc") ? 1 : 0, b);
 
   vSys = SYS_GB; srcW = 160; srcH = 144;
   gb_glue_init(AUDIO_RATE);
@@ -3108,7 +3119,7 @@ static void runNes(const RomEntry &r) {
   String b = baseName(String(r.name()));
   nesSavePath = "/gbc/saves/nes/" + b + ".sav";
   statePath = "/gbc/saves/nes/" + b + ".st0";
-  cheatsLoad(true, b);
+  cheatsLoad(2, b);
   bool pal = b.indexOf("(E)") >= 0 || b.indexOf("(Europe)") >= 0 || b.indexOf("(A)") >= 0 ||
              b.indexOf("(Australia)") >= 0 || b.indexOf("(PAL)") >= 0;
   int mapper = (romPtr[6] >> 4) | (romPtr[7] & 0xF0);

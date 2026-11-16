@@ -60,7 +60,7 @@ values (infinite lives, health, money, time...), written once per frame. It cost
 4 bytes of RAM per cheat and nothing when no cheat is on.
 
 - **Cheat files**: RetroArch-style `.cht` files (or simple `Name = CODE` lines) in
-  `/gbc/cheats/<rom name>.cht` (Game Boy / GBC) and `/gbc/cheats/nes/<rom name>.cht` (NES).
+  `/CHEATS/GB/`, `/CHEATS/GBC/` and `/CHEATS/NES/` at the root of the card, one `<game name>.cht` per game. The folder is hidden from the game browser.
   Codes: GameShark `ttVVLLHH` (GB/GBC; `tt` = 01, or 90-97 for a GBC work RAM bank), NES
   Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`, or `AAAA=VV` on any system; several codes
   joined with `+`. Game Genie codes patch the ROM rather than memory: they're listed as "n/a".
