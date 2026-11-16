@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.8.1"
+#define APP_VERSION "2.9.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -189,6 +189,10 @@ struct Settings {
   uint8_t ledGame = 1;     // while playing: 0 = same as menus, 1 = steady, 2 = off
   uint8_t ledFlashSave = 1;
   uint8_t ledFlashCheat = 1;
+  // menu music (its own volume, separate from the games)
+  uint8_t musicOn = 1;
+  uint8_t musicTune = 0;   // see TUNES
+  uint8_t musicVol = 1;    // 1..4
 };
 static Settings cfg;
 static Preferences prefs;
@@ -224,6 +228,9 @@ static void loadSettings() {
   cfg.ledGame = prefs.getUChar("ledg", cfg.ledGame);
   cfg.ledFlashSave = prefs.getUChar("ledfs", cfg.ledFlashSave);
   cfg.ledFlashCheat = prefs.getUChar("ledfc", cfg.ledFlashCheat);
+  cfg.musicOn = prefs.getUChar("mus", cfg.musicOn);
+  cfg.musicTune = prefs.getUChar("mtun", cfg.musicTune);
+  cfg.musicVol = constrain(prefs.getUChar("mvol", cfg.musicVol), 1, 4);
 
   prefs.end();
 }
@@ -259,6 +266,9 @@ static void saveSettings() {
   prefs.putUChar("ledg", cfg.ledGame);
   prefs.putUChar("ledfs", cfg.ledFlashSave);
   prefs.putUChar("ledfc", cfg.ledFlashCheat);
+  prefs.putUChar("mus", cfg.musicOn);
+  prefs.putUChar("mtun", cfg.musicTune);
+  prefs.putUChar("mvol", cfg.musicVol);
 
   prefs.end();
 }
@@ -1262,6 +1272,139 @@ static void audioStop() {
   audioWriteLevel(0x80, 8 * 128 + 128); // flush the DMA ring with midpoint samples
   i2s_stop(I2S_NUM_0);                  // DAC holds the midpoint while stopped
   audioRunning = false;
+}
+
+// ----------------------------------------------------------------------------
+// Menu music: a tiny synthesizer in the style of an 8-bit sound chip (two square waves,
+// a 16-step triangle, a 16-step saw and noise drums) playing the note data in
+// src/music/tunes.h (made by tools/music). It runs as a task on core 0 while the menus
+// show, fades in and out, and has its own volume. It stops before a game starts, since
+// games use the same sound output.
+// ----------------------------------------------------------------------------
+#include "music/tunes.h"
+static volatile bool musicWant = false, musicIdle = true, musicNewTune = false;
+static TaskHandle_t musicTaskH = nullptr;
+
+struct MusicVoice { uint32_t phase, inc, age; bool on; uint8_t drum; uint16_t lfsr; float nval; };
+
+static void musicTask(void *) {
+  static uint16_t out[128 * 2];
+  MusicVoice mv[8];
+  const Tune *t = nullptr;
+  int stepLen = 1, sPos = 0, nSteps = 1;
+  uint32_t si = 0;
+  float fade = 0;
+  const float fadeStep = 1.0f / (AUDIO_RATE * 0.25f);   // a quarter second in or out
+  auto begin = [&]() {
+    t = &TUNES[cfg.musicTune % NUM_TUNES];
+    stepLen = AUDIO_RATE * 60 / t->bpm / 4;
+    nSteps = 1;
+    for (int c = 0; c < t->nch; c++) nSteps = max(nSteps, (int)t->ch[c].n);
+    memset(mv, 0, sizeof mv);
+    for (auto &v : mv) { v.lfsr = 1; v.nval = 1; }
+    si = 0; sPos = 0;
+  };
+  while (true) {
+    if (!musicWant && musicIdle) { ulTaskNotifyTake(pdTRUE, portMAX_DELAY); continue; }
+    if (musicIdle) {   // start: the DMA ring holds the midpoint, so starting is silent
+      begin();
+      fade = 0;
+      musicNewTune = false;
+      i2s_start(I2S_NUM_0);
+      audioRunning = true;
+      musicIdle = false;
+    }
+    if (musicNewTune) { musicNewTune = false; begin(); fade = 0; }
+    const float target = musicWant ? 1.0f : 0.0f;
+    const float g = t->gain * cfg.musicVol / 4.0f;
+    int v8 = 0x80;
+    for (int i = 0; i < 128; i++) {
+      if (sPos == 0) {   // next step: start, hold or stop each channel's note
+        for (int c = 0; c < t->nch; c++) {
+          const TuneChannel &ch = t->ch[c];
+          MusicVoice &v = mv[c];
+          uint8_t tok = ch.steps[((int)si - ch.delay % ch.n + ch.n) % ch.n];
+          if (tok == 1) v.on = false;
+          else if (tok >= 2 && tok <= 4) { v.on = true; v.age = 0; v.drum = tok; }
+          else if (tok >= 12) {
+            v.on = true; v.age = 0; v.drum = 0;
+            float f = 440.0f * powf(2.0f, (tok - 69) / 12.0f);
+            v.inc = (uint32_t)(f / AUDIO_RATE * 4294967296.0f);
+          }
+        }
+      }
+      float mix = 0;
+      for (int c = 0; c < t->nch; c++) {
+        const TuneChannel &ch = t->ch[c];
+        MusicVoice &v = mv[c];
+        if (!v.on) continue;
+        float tt = v.age / (float)AUDIO_RATE;
+        v.age++;
+        float env = ch.decay > 0 ? max(ch.sustain, 1.0f - ch.decay * tt) : 1.0f;
+        if (ch.attack > 0 && tt < ch.attack) env *= tt / ch.attack;
+        float smp;
+        if (ch.kind == 0) {          // square
+          v.phase += v.inc;
+          smp = v.phase < (uint32_t)(ch.duty * 4294967296.0f) ? 1.0f : -1.0f;
+        } else if (ch.kind == 1) {   // triangle, 16 steps
+          v.phase += v.inc;
+          smp = roundf((4.0f * fabsf(v.phase / 4294967296.0f - 0.5f) - 1.0f) * 7.5f) / 7.5f;
+        } else if (ch.kind == 2) {   // saw, 16 steps
+          v.phase += v.inc;
+          smp = roundf((2.0f * v.phase / 4294967296.0f - 1.0f) * 7.5f) / 7.5f;
+        } else if (v.drum == 2) {    // kick: a square falling in pitch
+          float kf = 150.0f * expf(-tt * 25.0f) + 45.0f;
+          v.phase += (uint32_t)(kf / AUDIO_RATE * 4294967296.0f);
+          smp = v.phase < 0x80000000u ? 1.0f : -1.0f;
+          env = max(0.0f, 1.0f - tt * 9.0f);
+        } else {                     // hat / snare: noise from a 15-bit shift register
+          int rate = v.drum == 3 ? 9000 : 3000;
+          if ((uint64_t)v.age * rate / AUDIO_RATE != (uint64_t)(v.age - 1) * rate / AUDIO_RATE) {
+            uint16_t bit = (v.lfsr ^ (v.lfsr >> 1)) & 1;
+            v.lfsr = (v.lfsr >> 1) | (bit << 14);
+            v.nval = (v.lfsr & 1) ? 1.0f : -1.0f;
+          }
+          smp = v.nval;
+          env = max(0.0f, 1.0f - tt * (v.drum == 3 ? 28.0f : 9.0f));
+        }
+        mix += smp * env * ch.vol;
+      }
+      if (fade < target) fade = min(target, fade + fadeStep);
+      else if (fade > target) fade = max(target, fade - fadeStep);
+      float x = mix * g * fade;
+      x = x > 1 ? 1 : x < -1 ? -1 : x;
+      v8 = 128 + (int)(127 * x);
+      out[i * 2] = out[i * 2 + 1] = (uint16_t)(v8 << 8);
+      if (++sPos >= stepLen) { sPos = 0; si = (si + 1) % nSteps; }
+    }
+    size_t w;
+    i2s_write(I2S_NUM_0, out, sizeof out, &w, portMAX_DELAY);
+    dacLast = (uint8_t)v8;
+    if (!musicWant && fade <= 0) {   // faded out: park at the midpoint and stop
+      audioWriteLevel(0x80, 8 * 128 + 128);
+      i2s_stop(I2S_NUM_0);
+      audioRunning = false;
+      musicIdle = true;
+    }
+  }
+}
+
+static void musicInit() {
+  xTaskCreatePinnedToCore(musicTask, "music", 3072, nullptr, 3, &musicTaskH, 0);
+}
+// Plays the chosen tune if music is on (does nothing if it's already playing).
+static void musicStart() {
+  if (!musicTaskH || !cfg.musicOn || musicWant) return;
+  musicWant = true;
+  xTaskNotifyGive(musicTaskH);
+}
+// Fades out and waits until the sound output is free again (before a game starts).
+static void musicStop() {
+  if (!musicTaskH) return;
+  musicWant = false;
+  xTaskNotifyGive(musicTaskH);
+  uint32_t t0 = millis();
+  while (!musicIdle && millis() - t0 < 1500) delay(5);
 }
 
 extern "C" void gb_audio_out(const uint8_t *s, int n) {
@@ -2738,6 +2881,32 @@ static void xferMode(bool greeted) {
   Serial.begin(XFER_BAUD);
 }
 
+// Menu music: on/off, which tune, and its own volume (the games keep theirs).
+static void musicMenu() {
+  while (true) {
+    std::vector<MenuItem> it = {
+      { "Music", cfg.musicOn ? "On" : "Off" },
+      { "Tune", TUNES[cfg.musicTune % NUM_TUNES].name },
+      { "Music volume", String(cfg.musicVol) + "/4" },
+    };
+    static int selMus = -1;
+    int i = runList("Music", "Back", it, &selMus);
+    if (i < 0) break;
+    if (i == 0) {
+      cfg.musicOn ^= 1;
+      if (cfg.musicOn) musicStart(); else musicStop();
+    } else if (i == 1) {
+      cfg.musicTune = (cfg.musicTune + 1) % NUM_TUNES;
+      musicNewTune = true;
+      musicStart();
+    } else if (i == 2) {
+      cfg.musicVol = cfg.musicVol % 4 + 1;
+      musicStart();
+    }
+    saveSettings();
+  }
+}
+
 // Board LED. Opened from Setup and from the pause menu.
 static void ledMenu() {
   while (true) {
@@ -2767,7 +2936,8 @@ static void ledMenu() {
 static void settingsMenu() {
   while (true) {
     std::vector<MenuItem> it = {
-      { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
+      { "Game volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
+      { "Music", cfg.musicOn ? String(TUNES[cfg.musicTune % NUM_TUNES].name) : String("Off") },
       { "Scaling", scaleName() },
       { "DMG palette", DMG_PALETTE_NAMES[cfg.dmgPalette % NUM_DMG_PALETTES] },
       { "NES palette", NES_PALETTE_NAMES[cfg.nesPalette % NES_NUM_PALETTES] },
@@ -2789,16 +2959,17 @@ static void settingsMenu() {
       case -3:
       case -1: saveSettings(); return;
       case 0: cfg.volume = (cfg.volume + 1) % 5; break;
-      case 1: curScale() = (curScale() + 1) % NUM_SCALES; break;
-      case 2: cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; break;
-      case 3: cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES; break;
-      case 4: cfg.brightness = cfg.brightness >= 255 ? 64 : min(255, cfg.brightness + 64); break;
-      case 5: cfg.showFps ^= 1; break;
-      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
-      case 7: ledMenu(); break;
-      case 8: displayTouchMenu(); break;
-      case 9: xferMode(false); break;
-      case 11: controllerMenu(); break;
+      case 1: musicMenu(); break;
+      case 2: curScale() = (curScale() + 1) % NUM_SCALES; break;
+      case 3: cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; break;
+      case 4: cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES; break;
+      case 5: cfg.brightness = cfg.brightness >= 255 ? 64 : min(255, cfg.brightness + 64); break;
+      case 6: cfg.showFps ^= 1; break;
+      case 7: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
+      case 8: ledMenu(); break;
+      case 9: displayTouchMenu(); break;
+      case 10: xferMode(false); break;
+      case 12: controllerMenu(); break;
     }
     applyDisplaySettings(false);
     saveSettings();
@@ -3405,6 +3576,7 @@ static void enterGameScreen(uint8_t pad) {
 }
 
 static void runGame(const RomEntry &r) {
+  musicStop();   // the game needs the sound output
   String err;
   uint32_t len = loadRomToFlash(r, err);
   if (!len) {
@@ -3745,6 +3917,7 @@ static PauseResult nesPauseMenu(const char *title) {
 }
 
 static void runNes(const RomEntry &r) {
+  musicStop();   // the game needs the sound output
   String err;
   uint32_t len = loadRomToFlash(r, err);
   if (!len) {
@@ -4463,6 +4636,7 @@ void setup() {
   if (!romPart) gb_fatal(__FILE__, __LINE__, "Flash partition 'rom' missing.\nFlash the merged .bin at 0x0.");
 
   audioInit();
+  musicInit();
   if (cfg.btEnabled) btInit();   // Bluetooth off: don't start it at all (frees its RAM)
   xTaskCreatePinnedToCore(displayTask, "disp", 3072, nullptr, 2, nullptr, 0);
 
@@ -4474,6 +4648,7 @@ void setup() {
 }
 
 void loop() {
+  musicStart();   // menu music (if on); stops again before a game
   int sel = runBrowser();
   if (sel == -1) {
     settingsMenu();
