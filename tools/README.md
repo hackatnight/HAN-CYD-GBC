@@ -8,3 +8,6 @@
 - `nestest/` – NES core tests on a PC: `harness.c` (runs a ROM, dumps a frame / blargg status),
   `nst.c` (save-state round trip). Build against `src/nofrendo`. Test ROMs: nes-test-roms
   (retro-go ships them in `retro-core/components/nofrendo/docs/`).
+- `demos/` – the H@N demo ROMs (Game Boy/GBC and NES), built from scratch: `python3 build.py OUTDIR`.
+  `gbrun.c` / `nesrun.c` run a ROM in the firmware's cores with scripted buttons and save frames
+  (build lines at the top of each file).

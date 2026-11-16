@@ -2,3 +2,4 @@
 *.elf
 *.map
 !docs/firmware/*.bin
+__pycache__/
