@@ -367,8 +367,10 @@ a scene stays put; the input test goes back to the intro after about 13 seconds 
 How it works:
 - **Game Boy / GBC** (one ROM, MBC5, 512 KB; the .gbc copy runs in color mode with per-scene palettes). The 3D
   frames are rendered on a PC and stored in the ROM. Two copies of the picture's tiles sit in video memory and the
-  screen shows one while the next frame is copied into the other, two bytes at a time whenever the LCD allows it;
-  then they swap. The wobble changes the horizontal scroll in every HBlank, and on the GBC the same interrupt
+  screen shows one while the next frame is copied into the other; then they swap, about 15 times a second. On the
+  Game Boy Color the hardware does the copy itself, 16 bytes in every HBlank (HBlank DMA); on the original Game Boy
+  the program copies six bytes in each HBlank. The flying hackatnight.com and the wobble change the horizontal
+  scroll per line from an interrupt that only runs on the lines that need it, and on the GBC the same interrupt
   rewrites a palette color for each line.
 - **NES** (mapper 4 / MMC3, 32 KB code, 256 KB graphics). Each 3D frame is its own pair of 1 KB graphics banks, so
   showing the next frame is just two mapper writes. The wobble and the flying hackatnight.com use the MMC3's

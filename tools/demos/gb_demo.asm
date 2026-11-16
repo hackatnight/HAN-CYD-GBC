@@ -45,10 +45,16 @@ LCDC = $FF40
 STAT = $FF41
 SCX = $FF43
 LY = $FF44
+LYC = $FF45
 DMA = $FF46
 BGP = $FF47
 OBP0 = $FF48
 VBK = $FF4F
+HDMA1 = $FF51
+HDMA2 = $FF52
+HDMA3 = $FF53
+HDMA4 = $FF54
+HDMA5 = $FF55
 BCPS = $FF68
 BCPD = $FF69
 OCPS = $FF6A
@@ -71,6 +77,7 @@ hTmpOff = $FF9A
 hBandTop = $FF9C        ; first line of the flying HACKATNIGHT.COM strip
 hFlyX = $FF9D           ; its scroll position
 hWobOn = $FF9E          ; scroller scene: wobble the text rows
+hIsr = $FF9F            ; set by every interrupt (the frame copy checks it)
 
 ; ---------------------------------------------------------------- WRAM
 OAMBUF = $C000
@@ -217,6 +224,8 @@ MainLoop:
 ; ---------------------------------------------------------------- interrupts
 VBlankISR:
     push af
+    ld a,1
+    ldh [hIsr],a
     call $FF80
     ldh a,[hFlip]
     and a
@@ -249,10 +258,22 @@ VBlankISR:
     pop af
     reti
 
-; HBlank, every line: the flying HACKATNIGHT.COM strip (scroll + shine) and, in the
-; scroller scene, the wobbling text rows with a GBC rainbow.
+; STAT interrupt. In the scroller scene it runs in every HBlank (wobble, rainbow). In the
+; other scenes it only runs for the flying strip: a line-compare interrupt on the line above
+; the strip turns the HBlank interrupt on, and the first line after the strip turns it off
+; again, so the rest of each frame's HBlanks are free for copying the next 3D frame.
 StatISR:
     push af
+    ld a,1
+    ldh [hIsr],a
+    ldh a,[STAT]
+    bit 3,a
+    jr nz,.hb
+    ld a,%00001000          ; the line above the strip: HBlank interrupts from here
+    ldh [STAT],a
+    pop af
+    reti
+.hb:
     push hl
     ldh a,[LY]
     inc a
@@ -292,7 +313,11 @@ StatISR:
     ldh [BGP],a
     ldh a,[hWobOn]
     and a
-    jr z,.done
+    jr nz,.wob
+    ld a,%01000000          ; past the strip: back to the line-compare interrupt
+    ldh [STAT],a
+    jr .done
+.wob:
     ldh a,[hCGB]
     and a
     jr z,.done
@@ -340,7 +365,15 @@ LcdOff:
 LcdOnDefault:
     ld a,LCD_ON
     ldh [LCDC],a
-    ld a,%00001000          ; STAT interrupt at each HBlank (flying text, wobble)
+    ldh a,[hBandTop]
+    dec a
+    ldh [LYC],a
+    ldh a,[hWobOn]
+    and a
+    ld a,%00001000          ; scroller: STAT interrupt at each HBlank
+    jr nz,.st
+    ld a,%01000000          ; others: at the line above the flying strip
+.st:
     ldh [STAT],a
     xor a
     ldh [IF],a
@@ -597,8 +630,6 @@ Music:
     sub 1
     ld [wMusAcc+1],a
     ret nc
-    ld a,MUS_BANK
-    ld [MBC_BANK],a
     ld a,[wTune]
     ld l,a
     ld h,0
@@ -1073,11 +1104,67 @@ CopyRun:                    ; copies until done or the next VBlank
     ldh a,[hVbl]
     and a
     jr nz,.save
+    ldh a,[STAT]
+    and 3
+    cp 1
+    jr z,.two               ; VBlank: two bytes at a time
+    xor a
+    ldh [hIsr],a
+.w3:                        ; wait for the start of an HBlank
+    ldh a,[STAT]
+    and 3
+    cp 3
+    jr nz,.w3
+.w0:
+    ldh a,[STAT]
+    and 3
+    jr nz,.w0
+    di
+    ldh a,[hIsr]            ; an interrupt used up part of this HBlank: take the next one
+    and a
+    jr nz,.next
+    ld a,b
+    and a
+    jr nz,.six
+    ld a,c
+    cp 6
+    jr c,.two2
+.six:                       ; six bytes fit in an HBlank plus the OAM scan after it
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ld a,[hl+]
+    ld [de],a
+    inc de
+    ei
+    ld a,c
+    sub 6
+    ld c,a
+    jr nc,.chk
+    dec b
+    jr .chk
+.next:
+    ei
+    jr .loop
+.two:
     di
 .w:
     ldh a,[STAT]
     and 2
     jr nz,.w
+.two2:
     ld a,[hl+]
     ld [de],a
     inc de
@@ -1087,6 +1174,7 @@ CopyRun:                    ; copies until done or the next VBlank
     ei
     dec bc
     dec bc
+.chk:
     ld a,b
     or c
     jr nz,.loop
@@ -1157,6 +1245,7 @@ AnimTick:                   ; states: 0 start a copy, 1 copying, 2 ready, 3 swap
     jr z,.copying
     cp 2
     jr nz,.s3
+.wait:
     ld a,[wAnimWait]
     ld hl,wAnimDelay
     cp [hl]
@@ -1172,16 +1261,25 @@ AnimTick:                   ; states: 0 start a copy, 1 copying, 2 ready, 3 swap
     ret nz
     xor a
     ld [wAnimState],a
-    ret
+    jr .start               ; swapped: start on the next frame right away
 .copying:
+    ldh a,[hCGB]
+    and a
+    jr z,.cpu
+    ldh a,[HDMA5]           ; Game Boy Color: $FF once the HBlank transfer is done
+    cp $FF
+    ret nz
+    jr .ready
+.cpu:
     ld a,[wCopyLeft]
     ld b,a
     ld a,[wCopyLeft+1]
     or b
     ret nz
+.ready:
     ld a,2
     ld [wAnimState],a
-    ret
+    jr .wait
 .start:
     ld a,[wAnimMode]
     and a
@@ -1236,10 +1334,40 @@ AnimTick:                   ; states: 0 start a copy, 1 copying, 2 ready, 3 swap
     ld [wCopyDst+1],a
     xor a
     ld [wCopyDst],a
+    ldh a,[hCGB]
+    and a
+    jr z,.dmg
+    ; Game Boy Color: the hardware copies 16 bytes in every HBlank by itself (HBlank DMA),
+    ; so a whole frame arrives within one screen refresh
+    ld a,[wCopyBank]
+    ld [MBC_BANK],a
+    ld a,[wCopySrc+1]
+    ldh [HDMA1],a
+    ld a,[wCopySrc]
+    ldh [HDMA2],a
+    ld a,[wCopyDst+1]
+    ldh [HDMA3],a
+    xor a
+    ldh [HDMA4],a
+    ld a,[wAnimBytes]       ; bytes / 16 - 1, with bit 7 set for HBlank mode
+    ld l,a
+    ld a,[wAnimBytes+1]
+    ld h,a
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,h
+    dec a
+    or $80
+    ldh [HDMA5],a
+    jr .go
+.dmg:
     ld a,[wAnimBytes]
     ld [wCopyLeft],a
     ld a,[wAnimBytes+1]
     ld [wCopyLeft+1],a
+.go:
     ld a,1
     ld [wAnimState],a
     ret
@@ -1295,6 +1423,20 @@ NextScene:
 GoScene:
     ldh [hScene],a
 SceneSetup:
+    ldh a,[hCGB]            ; let a running HBlank transfer finish before the LCD goes off
+    and a
+    jr z,.nh
+    ld a,[wAnimOn]
+    and a
+    jr z,.nh
+    ld a,[wAnimState]
+    cp 1
+    jr nz,.nh
+.wh:
+    ldh a,[HDMA5]
+    cp $FF
+    jr nz,.wh
+.nh:
     call LcdOff
     xor a
     ld [wSceneT],a

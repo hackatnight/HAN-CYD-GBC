@@ -384,12 +384,12 @@ def build_gb(outdir):
                 '\nShineHi:\n' + db(shine_hi))
     tables_at = len(data)
 
-    # --- banked: music first in bank 1, then the frames (a frame never crosses a bank)
-    data.append('bank 1\n' + music_src)
-    music_bytes = sum(len(d[k][0]) for _, sg in tunes.TUNES for d in [tunes.tune_data(sg)]
-                      for k in ('p1', 'p2', 'wave', 'noise') if d[k]) + 32 * len(tunes.TUNES)
+    # --- music stays in bank 0 (the frame's bank must stay mapped during a GBC HBlank transfer)
+    data.append(music_src)
+    # --- banked: the frames (a frame never crosses a bank)
+    data.append('bank 1')
     frame_tables = []
-    bank, used = 1, music_bytes
+    bank, used = 1, 0
     for name in SCENES[1:7]:
         entries = []
         for i, fr in enumerate(frames[name]):
