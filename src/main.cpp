@@ -54,6 +54,9 @@
 //   BOARD_W328C   2.8" JC2432W328C: ST7789 IPS screen, capacitive CST820 (wired like the 2.4" C)
 //   BOARD_024N    2.4" ESP32-2432S024N: no touch screen (Bluetooth controller only)
 //   BOARD_032N    3.2" ESP32-2432S032N: ST7789 screen, no touch (Bluetooth controller only)
+//   BOARD_028PLUS 2.8" ESP32-2432S028R Plus (ESP32-WROOM-32E, USB-C, sold in NerdMiner kits):
+//                 as the 2.8" R, but an ST7789 screen without inversion, the RGB LED on
+//                 17 / 22 / 16, and the speaker amplifier switched on by GPIO4
 //   BOARD_CROW    Elecrow CrowPanel ESP32 2.4" / 2.8" (ESP32-WROOM versions): like the 2.4" R
 //                 (resistive XPT2046 on the screen's bus), but no RGB LED (GPIO16/17 are its
 //                 UART1 port) and no touch interrupt line
@@ -73,6 +76,7 @@
 // #define BOARD_024N
 // #define BOARD_032N
 // #define BOARD_CROW
+// #define BOARD_028PLUS
 #define TOUCH_CST     0   // CST820 on I2C (2.4" C)
 #define TOUCH_XPT_OWN 1   // XPT2046 on its own pins, software SPI (2.8" R, CYD2USB)
 #define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R, 3.2" R, 3.5" R)
@@ -143,6 +147,15 @@
 #define DEFAULT_PANEL 1    // ST7789 (IPS)
 #define DEFAULT_INVERT 1
 #define BL_PIN 27
+#elif defined(BOARD_028PLUS)
+#define BOARD_NAME "ESP32-2432S028R-Plus"
+#define TOUCH_KIND TOUCH_XPT_OWN
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789, BGR, no inversion (from the maker's pin guide)
+#define DEFAULT_INVERT 0
+#define BL_PIN 21
+#define LED_PINS 17, 22, 16   // red, green, blue
+#define AUDIO_EN_PIN 4     // speaker amplifier enable (assumed on when high)
 #elif defined(BOARD_CROW)
 #define BOARD_NAME "CrowPanel-ESP32-2.4-2.8"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -232,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.17.0"
+#define APP_VERSION "2.18.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -913,9 +926,9 @@ static void applyTheme() {
 // ----------------------------------------------------------------------------
 #include <driver/ledc.h>
 #include <esp_timer.h>
-#define PIN_LED_R 4
-#define PIN_LED_G 16
-#define PIN_LED_B 17
+#ifndef LED_PINS
+#define LED_PINS 4, 16, 17     // red, green, blue (lit when low)
+#endif
 struct LedColor { const char *name; uint32_t rgb; };
 static const LedColor LED_COLORS[] = {
   { "Theme", 0 }, { "Red", 0xFF0000 }, { "Orange", 0xFF5000 }, { "Yellow", 0xFFB000 }, { "Green", 0x00FF20 },
@@ -975,7 +988,7 @@ static void ledInit() {
   t.freq_hz = 5000;
   t.clk_cfg = LEDC_AUTO_CLK;
   if (ledc_timer_config(&t) != ESP_OK) return;
-  const int pins[3] = { PIN_LED_R, PIN_LED_G, PIN_LED_B };
+  const int pins[3] = { LED_PINS };
   for (int i = 0; i < 3; i++) {
     ledc_channel_config_t c = {};
     c.gpio_num = pins[i];
@@ -5268,6 +5281,10 @@ void setup() {
   Serial.begin(XFER_BAUD);   // one speed for the boot log and USB transfers
   Serial.println("\n" APP_NAME " " APP_VERSION " for the " BOARD_NAME);
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
+#ifdef AUDIO_EN_PIN
+  pinMode(AUDIO_EN_PIN, OUTPUT);       // switch the speaker amplifier on
+  digitalWrite(AUDIO_EN_PIN, HIGH);
+#endif
   lcdMutex = xSemaphoreCreateMutex();
   frameReady = xSemaphoreCreateBinary();
 

@@ -71,7 +71,7 @@
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.17.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.18.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -84,7 +84,8 @@
     ribbon instead of 4). <strong>3.2" (ESP32-2432S032) and 3.5" (ESP32-3248S035):</strong> again C = capacitive,
     R = resistive, N = no touch screen (needs a Bluetooth controller). <strong>JC2432W328C:</strong> a 2.8" capacitive
     board with the model number on the back. <strong>Elecrow CrowPanel ESP32 2.4" / 2.8":</strong> one build for both
-    (the ESP32-WROOM versions, not the "Advance" ESP32-S3 ones). Other boards won't work. Flashing replaces whatever is on the board now.
+    (the ESP32-WROOM versions, not the "Advance" ESP32-S3 ones). <strong>ESP32-2432S028R Plus</strong> (USB-C, ESP32-WROOM-32E,
+    sold in NerdMiner kits): use its own build, not the 2.8" R one. Other boards won't work. Flashing replaces whatever is on the board now.
   </div>
 
   <div class="builds">
@@ -168,6 +169,21 @@
       </ul>
       <esp-web-install-button manifest="firmware/manifest-2432S028C.json">
         <button slot="activate">Install 2.8" capacitive build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>2.8" R Plus <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
+      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028R Plus (USB-C, WROOM-32E, NerdMiner kits)</p>
+      <ul>
+        <li>Touch + Bluetooth controllers, starts in portrait</li>
+        <li>Set up for its ST7789 screen, LED pins and speaker switch</li>
+        <li>Asks you to calibrate the touch screen on first start</li>
+        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-2432S028R-Plus.json">
+        <button slot="activate">Install 2.8" R Plus build</button>
         <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
         <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
       </esp-web-install-button>
@@ -301,6 +317,7 @@
           <tr><td>ESP32-2432S024R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
           <tr><td>ESP32-2432S028R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
           <tr><td>ESP32-2432S028 <small>CYD2USB</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028R <small>Plus</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
           <tr><td>ESP32-2432S028C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
           <tr><td>ESP32-2432S032R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
           <tr><td>ESP32-2432S032C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
