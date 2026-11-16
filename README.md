@@ -1,16 +1,16 @@
 # H@N-CYD-GBC
 
-**Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C (2.4" "Cheap Yellow Display")**
-with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
+**Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
+the ESP32-2432S024C (2.4") and, new, the ESP32-2432S028R (2.8")**, with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
 
 > [!WARNING]
-> **This firmware only works on the ESP32-2432S024C** (2.4" ILI9341 screen, **CST820 capacitive**
-> touch, microSD slot, speaker connector, 4 MB flash, no PSRAM). Other "CYD" boards (the 2.8"
-> ESP32-2432S028R, resistive-touch versions, S3 boards...) use different screens, touch chips and
-> pins. It won't work on them and will most likely show a blank screen.
+> **Use the build for your exact board** (see [Supported boards](#supported-boards)). Other "CYD"
+> boards (ESP32-S3 boards, the 3.5" ESP32-3248S035, the 2.8" "CYD2USB" with two USB ports...) use
+> different chips, screens or pins. The firmware won't work on them and will most likely show a
+> blank screen.
 
 **Flash it from your browser:** <https://hackatnight.com/HAN-CYD-GBC/>
 
@@ -18,6 +18,7 @@ and a one-click web flasher.
 
 ## Contents
 
+- [Supported boards](#supported-boards)
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Flashing in detail](#flashing-in-detail)
@@ -32,6 +33,41 @@ and a one-click web flasher.
 > The menu pictures in this README are illustrations drawn from the firmware's own layout and colors,
 > not photos of the screen. The boot and loading animations were rendered by the firmware's own
 > wireframe code.
+
+---
+
+## Supported boards
+
+| Board | Screen / touch | Status | Builds |
+|---|---|---|---|
+| **ESP32-2432S024C** | 2.4" ILI9341, CST820 **capacitive** touch | Main board, tested daily | Bluetooth (PS4), Touch-only |
+| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 **resistive** touch (the original "Cheap Yellow Display") | **New in 2.11.0: needs testers** | Bluetooth (PS4) with touch |
+
+Both are the classic ESP32 (dual core, 240 MHz, 4 MB flash, no PSRAM) with a microSD slot, a speaker connector
+and an RGB LED, so every feature works on both. The 2.8" board differs only in its backlight pin and its touch chip.
+
+### Testing the 2.8" ESP32-2432S028R build
+
+This build has passed every check I could run without the board in hand, but nobody has run it on a real 2.8" board
+yet. If you have one, please try it and
+**[send a quick board test report](https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md)**.
+
+The checks run so far:
+- It compiles, and every pin matches the board's published pin map with no clashes.
+- The touch chip is read in software on its own pins, so it never shares a connection with the SD card.
+- [`tools/touchtest`](tools/touchtest) runs the firmware's touch calibration against simulated resistive panels, in
+  all 8 ways the touch layer can be wired and all 4 screen orientations. Taps land within 1.4 px, and a bad
+  calibration is always refused.
+
+What to expect:
+1. **First start:** after the boot animation, it asks you to **tap four crosses** to calibrate the touch screen.
+   A resistive screen needs this once; it's saved after that. *Setup → Display & touch → Calibrate touch* redoes it.
+2. **It starts in portrait** with on-screen buttons, so it can be played by touch right away. If the picture is
+   upside down, **hold BOOT for 1 second** on the game list to rotate it. Pair a PS4 controller to play in
+   landscape.
+3. Everything else (SD card, sound, LED, USB transfer, cheats, saves) is the same as on the 2.4" board.
+
+Not supported yet: the 2.8" variant with two USB ports ("CYD2USB"), which uses an ST7789 screen chip instead.
 
 ---
 
@@ -59,7 +95,7 @@ and a one-click web flasher.
 
 You need:
 
-- an **ESP32-2432S024C** board
+- an **ESP32-2432S024C** or **ESP32-2432S028R** board
 - a **microSD card** (any size; it gets formatted FAT32)
 - a **USB cable that carries data** (some cables only charge)
 - **Chrome or Edge on a computer**, for the web flasher
@@ -68,9 +104,12 @@ You need:
 
 Steps:
 
-1. **Pick a build.**
+1. **Pick a build.** On the **ESP32-2432S024C**:
    - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.25 MB of flash for games and more free memory.
+
+   On the **ESP32-2432S028R**, use the **2.8" build** (touch and Bluetooth, 2.9 MB for games). See
+   [Testing the 2.8" build](#testing-the-28-esp32-2432s028r-build).
 2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
@@ -110,6 +149,8 @@ pip install esptool
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-BT.bin
 # or
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-touch.bin
+# ESP32-2432S028R (2.8"):
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028R.bin
 ```
 
 ### Option 3: Espressif's online tool
@@ -466,7 +507,8 @@ licensed games.
 
 | Problem | Try this |
 |---|---|
-| Blank or white screen after flashing | Make sure the board really is an ESP32-2432S024C (capacitive touch, 2.4"). Other CYD boards aren't supported. |
+| Blank or white screen after flashing | Make sure you flashed the build for your exact board: ESP32-2432S024C (2.4", capacitive) or ESP32-2432S028R (2.8", resistive, one USB port). Other CYD boards aren't supported. |
+| 2.8" board: taps land in the wrong place | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
@@ -493,6 +535,9 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - `partitions.csv` (Bluetooth layout) is picked up automatically.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
+   - For the **ESP32-2432S028R**, also define `BOARD_028R`: uncomment `// #define BOARD_028R` near the top of
+     `src/main.cpp`, or with arduino-cli add `--build-property compiler.cpp.extra_flags=-DBOARD_028R`. Use the
+     Bluetooth partition layout.
 4. To make a single merged image like the ones in `docs/firmware`:
    ```sh
    esptool.py --chip esp32 merge_bin -o merged.bin --flash_mode dio --flash_freq 80m --flash_size 4MB \
@@ -510,7 +555,7 @@ Project layout:
 | `src/music/` | The menu tunes as note data (generated by `tools/music/gen_tunes.py`) |
 | `src/bt_slim/` | Slimmed Bluetooth library files (Bluetooth build) |
 | `docs/` | Web flasher and "Send games" page (`send.js`), firmware images, cheat pack, README images |
-| `tools/` | Host tests (`usbtest` for USB transfers), logo and cheat-pack generators |
+| `tools/` | Host tests (`usbtest` for USB transfers, `touchtest` for touch calibration, `histtest`), logo, music and cheat-pack generators |
 
 ---
 

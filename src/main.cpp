@@ -37,28 +37,54 @@
 #define HAVE_BT 0   // plain Arduino-ESP32 build: no Bluetooth controller support
 #endif
 
+// ----------------------------------------------------------------------------
+// Which board. Default: ESP32-2432S024C (2.4", capacitive CST820 touch).
+// For the ESP32-2432S028R (2.8" "Cheap Yellow Display", resistive XPT2046 touch), define
+// BOARD_028R: uncomment the next line, or with arduino-cli add
+//   --build-property compiler.cpp.extra_flags=-DBOARD_028R
+// ----------------------------------------------------------------------------
+// #define BOARD_028R
+#ifdef BOARD_028R
+#define BOARD_NAME "ESP32-2432S028R"
+#define TOUCH_RESISTIVE 1
+#else
+#define BOARD_NAME "ESP32-2432S024C"
+#define TOUCH_RESISTIVE 0
+#endif
+
 // Default orientation. LovyanGFX rotation 2 = portrait, confirmed correct on the
 // ESP32-2432S024C (touch lines up with no transform); 3 = Landscape L (board
 // turned counter-clockwise). Landscape needs a controller, so it's BT-only.
-#if HAVE_BT
+#if HAVE_BT && !TOUCH_RESISTIVE
 #define DEFAULT_ROTATION 3
-#else
+#else   // the 2.8" board starts in portrait so it can be played by touch right away
 #define DEFAULT_ROTATION 2
 #endif
 
 // ----------------------------------------------------------------------------
-// Board pins (ESP32-2432S024C)
+// Board pins. Display, SD card, speaker (GPIO26), RGB LED (4/16/17) and BOOT are the same
+// on both boards; the 2.8" board has its backlight on 21 and an XPT2046 touch chip on its
+// own pins (driven by software SPI, so it never shares a bus with the SD card).
 // ----------------------------------------------------------------------------
 #define PIN_LCD_SCLK 14
 #define PIN_LCD_MOSI 13
 #define PIN_LCD_MISO 12
 #define PIN_LCD_DC    2
 #define PIN_LCD_CS   15
+#ifdef BOARD_028R
+#define PIN_LCD_BL   21
+#define PIN_TP_SCLK  25
+#define PIN_TP_MOSI  32
+#define PIN_TP_MISO  39
+#define PIN_TP_CS    33
+#define PIN_TP_INT   36
+#else
 #define PIN_LCD_BL   27
 #define PIN_TP_SDA   33
 #define PIN_TP_SCL   32
 #define PIN_TP_RST   25
 #define PIN_TP_INT   21
+#endif
 #define PIN_SD_SCK   18
 #define PIN_SD_MISO  19
 #define PIN_SD_MOSI  23
@@ -66,7 +92,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.10.0"
+#define APP_VERSION "2.11.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -88,7 +114,11 @@ public:
   lgfx::Panel_ILI9341 panel;
   lgfx::Bus_SPI bus;
   lgfx::Light_PWM light;
+#ifdef BOARD_028R
+  lgfx::Touch_XPT2046 touch;
+#else
   lgfx::Touch_CST816S touch;
+#endif
 
   LGFX() {
     {
@@ -133,6 +163,25 @@ public:
       light.config(c);
       panel.setLight(&light);
     }
+#ifdef BOARD_028R
+    {
+      // raw readings are 0..4095; Setup's touch calibration maps them to the screen
+      auto c = touch.config();
+      c.x_min = 0; c.x_max = 4095;
+      c.y_min = 0; c.y_max = 4095;
+      c.pin_int = PIN_TP_INT;
+      c.bus_shared = false;
+      c.offset_rotation = 0;
+      c.spi_host = -1;          // software SPI on its own pins
+      c.freq = 1000000;
+      c.pin_sclk = PIN_TP_SCLK;
+      c.pin_mosi = PIN_TP_MOSI;
+      c.pin_miso = PIN_TP_MISO;
+      c.pin_cs = PIN_TP_CS;
+      touch.config(c);
+      panel.setTouch(&touch);
+    }
+#else
     {
       auto c = touch.config();
       c.x_min = 0; c.x_max = 239;
@@ -149,6 +198,7 @@ public:
       touch.config(c);
       panel.setTouch(&touch);
     }
+#endif
     setPanel(&panel);
   }
   void setRgbOrder(bool rgb) { auto c = panel.config(); c.rgb_order = rgb; panel.config(c); }
@@ -468,7 +518,12 @@ static void rawToPanel(int rx, int ry, float &px, float &py) {
     px = cfg.calAx * ux + cfg.calBx;
     py = cfg.calAy * uy + cfg.calBy;
   } else {
+#if TOUCH_RESISTIVE
+    // uncalibrated: a rough guess at the usual range; the first boot asks for calibration
+    px = (rx - 300) * 240.0f / 3500; py = (ry - 300) * 320.0f / 3500;
+#else
     px = rx; py = ry;
+#endif
     if (cfg.touchFlipX) px = 239 - px;
     if (cfg.touchFlipY) py = 319 - py;
   }
@@ -2607,6 +2662,44 @@ static bool sampleRaw(float &rx, float &ry) {
   return true;
 }
 
+// Works out the calibration from the raw readings at four targets (TL, TR, BL, BR, in
+// panel coordinates). Returns false if the taps don't make a consistent picture.
+struct CalResult { uint8_t swap; float ax, bx, ay, by; };
+static bool calSolve(const float rx[4], const float ry[4], const float PX[4], const float PY[4], CalResult &r) {
+  // Least-squares line through the 4 points: out = a * in + b, with corr = how well it fits.
+  // Works in every orientation (in landscape the screen's left/right is the panel's up/down).
+  auto fit = [](const float *in, const float *out, float &a, float &b, float &corr) {
+    float mi = 0, mo = 0;
+    for (int i = 0; i < 4; i++) { mi += in[i] / 4; mo += out[i] / 4; }
+    float sio = 0, sii = 0, soo = 0;
+    for (int i = 0; i < 4; i++) {
+      sio += (in[i] - mi) * (out[i] - mo); sii += (in[i] - mi) * (in[i] - mi); soo += (out[i] - mo) * (out[i] - mo);
+    }
+    if (sii < 1e-6f || soo < 1e-6f) { a = 1; b = 0; corr = 0; return; }
+    a = sio / sii; b = mo - a * mi; corr = sio / sqrtf(sii * soo);
+  };
+  float axX, bxX, cX, axY, bxY, cY;
+  fit(rx, PX, axX, bxX, cX);        // panel x from raw x
+  fit(ry, PX, axY, bxY, cY);        // panel x from raw y
+  uint8_t swap = fabsf(cY) > fabsf(cX) ? 1 : 0;   // which raw axis follows the panel's x
+  const float *U = swap ? ry : rx, *V = swap ? rx : ry;
+  float ax, bx, ay, by, c1, c2;
+  fit(U, PX, ax, bx, c1);
+  fit(V, PY, ay, by, c2);
+  // pixels per raw unit: about 1 for the capacitive touch (it reports pixels), about
+  // 0.07 for the resistive one (it reports 0..4095)
+  const float lo = TOUCH_RESISTIVE ? 0.02f : 0.4f, hi = TOUCH_RESISTIVE ? 0.3f : 2.5f;
+  bool ok = fabsf(c1) > 0.95f && fabsf(c2) > 0.95f &&
+            fabsf(ax) > lo && fabsf(ax) < hi && fabsf(ay) > lo && fabsf(ay) < hi;
+  // every point must land within 20 px of its target
+  for (int i = 0; ok && i < 4; i++) {
+    float ex = ax * U[i] + bx - PX[i], ey = ay * V[i] + by - PY[i];
+    if (ex * ex + ey * ey > 20 * 20) ok = false;
+  }
+  r = { swap, ax, bx, ay, by };
+  return ok;
+}
+
 static void calibrateTouch() {
   // targets in screen coords: TL, TR, BL, BR
   const int TX[4] = { 30, SCR_W - 30, 30, SCR_W - 30 };
@@ -2632,27 +2725,10 @@ static void calibrateTouch() {
   float PX[4], PY[4];
   for (int i = 0; i < 4; i++) screenToPanel(TX[i], TY[i], PX[i], PY[i]);
 
-  // which raw axis follows the horizontal screen axis?
-  float dxx = (rx[1] + rx[3]) - (rx[0] + rx[2]);
-  float dxy = (ry[1] + ry[3]) - (ry[0] + ry[2]);
-  uint8_t swap = fabsf(dxy) > fabsf(dxx) ? 1 : 0;
-  auto U = [&](int i) { return swap ? ry[i] : rx[i]; };
-  auto V = [&](int i) { return swap ? rx[i] : ry[i]; };
-
-  float uL = (U(0) + U(2)) / 2, uR = (U(1) + U(3)) / 2;
-  float vT = (V(0) + V(1)) / 2, vB = (V(2) + V(3)) / 2;
-  bool ok = fabsf(uR - uL) > 40 && fabsf(vB - vT) > 80;
-  float ax = 1, bx = 0, ay = 1, by = 0;
-  if (ok) {
-    ax = (PX[1] - PX[0]) / (uR - uL);  bx = PX[0] - ax * uL;
-    ay = (PY[2] - PY[0]) / (vB - vT);  by = PY[0] - ay * vT;
-    ok = fabsf(ax) > 0.4f && fabsf(ax) < 2.5f && fabsf(ay) > 0.4f && fabsf(ay) < 2.5f;
-    // every point must land within 20 px of its target
-    for (int i = 0; ok && i < 4; i++) {
-      float ex = ax * U(i) + bx - PX[i], ey = ay * V(i) + by - PY[i];
-      if (ex * ex + ey * ey > 20 * 20) ok = false;
-    }
-  }
+  CalResult cr;
+  bool ok = calSolve(rx, ry, PX, PY, cr);
+  uint8_t swap = cr.swap;
+  float ax = cr.ax, bx = cr.bx, ay = cr.ay, by = cr.by;
   if (!ok) {
     lcd.fillScreen(C_BG);
     uiHeader("Touch calibration");
@@ -2961,7 +3037,7 @@ static bool xferCommand(const char *cmd) {
   String c(cmd);
   if (c == "HELLO") {
     uint64_t freeMB = (SD.totalBytes() - SD.usedBytes()) >> 20;
-    Serial.printf("HNX OK %s %s %u\n", APP_VERSION, HAVE_BT ? "BT" : "TOUCH", (unsigned)freeMB);
+    Serial.printf("HNX OK %s %s %u %s\n", APP_VERSION, HAVE_BT ? "BT" : "TOUCH", (unsigned)freeMB, BOARD_NAME);
   } else if (c.startsWith("LIST ")) {
     File d = SD.open(c.substring(5));
     if (d && d.isDirectory()) {
@@ -4796,7 +4872,7 @@ size_t getArduinoLoopTaskStackSize(void) { return 6144; }
 // ----------------------------------------------------------------------------
 void setup() {
   Serial.begin(XFER_BAUD);   // one speed for the boot log and USB transfers
-  Serial.println("\n" APP_NAME " " APP_VERSION);
+  Serial.println("\n" APP_NAME " " APP_VERSION " for the " BOARD_NAME);
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
   lcdMutex = xSemaphoreCreateMutex();
   frameReady = xSemaphoreCreateBinary();
@@ -4854,6 +4930,11 @@ void setup() {
   Serial.printf("SD %s, %d ROMs, heap free %u, largest %u\n", sdOk ? "ok" : "FAIL", (int)roms.size(),
                 heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
   splashFinish();   // lets the animation finish (tap to skip) and frees its memory
+#if TOUCH_RESISTIVE
+  // A resistive screen needs calibrating once (Setup > Display & touch can redo it).
+  // Until it's done the board asks at every start; BOOT skips it.
+  if (!cfg.calValid) calibrateTouch();
+#endif
 }
 
 void loop() {

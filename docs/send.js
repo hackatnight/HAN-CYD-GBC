@@ -110,8 +110,8 @@ export class HnxLink {
       try {
         const l = await this.next(1000);
         if (l.startsWith('OK ')) {
-          const [version, build, freeMB] = l.slice(3).split(' ');
-          return { version, build, freeMB: Number(freeMB) };
+          const [version, build, freeMB, board] = l.slice(3).split(' ');
+          return { version, build, freeMB: Number(freeMB), board: board || '' };
         }
       } catch (e) { /* not yet */ }
     }

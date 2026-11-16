@@ -16,7 +16,7 @@ const link = new HnxLink(Readable.toWeb(board.stdout), Writable.toWeb(board.stdi
 const ok = (c, m) => { if (!c) { console.error('FAIL:', m); process.exit(1); } console.log('ok  ', m); };
 
 const info = await link.hello();
-ok(info.version === 'test', 'hello: ' + JSON.stringify(info));
+ok(info.version === 'test' && info.board === 'ESP32-TEST', 'hello: ' + JSON.stringify(info));
 ok(JSON.stringify(await romFolders(link)) === JSON.stringify(['/Roms/GBC', '/Roms/GBC/RPG']), 'folder list');
 
 ok(targetFor('Tetris.GB', 'auto', 'gb') === '/Roms/GB/Tetris.GB', 'sort .gb');

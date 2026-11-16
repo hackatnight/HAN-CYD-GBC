@@ -120,3 +120,4 @@ enum { LED_FLASH_SAVE = 1 };
 static void ledFlash(int) {}
 #define APP_VERSION "test"
 #define HAVE_BT 0
+#define BOARD_NAME "ESP32-TEST"
