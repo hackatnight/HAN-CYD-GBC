@@ -471,6 +471,7 @@ void gb_ring_free(void)
 	free(gb_pal_log);
 	gb_ring = 0;
 	gb_pal_log = 0;
+	gb_pal_log_n = 0;
 	gb_ring_lines = 0;
 }
 
@@ -487,9 +488,15 @@ int gb_ring_alloc(int lines)
 		r = (byte (*)[160])malloc((size_t)lines * 160);
 		if (!r) return -1;
 	}
-	if (!gb_pal_log)
-		gb_pal_log = (gb_pal_change_t *)calloc(GB_PAL_LOG, sizeof *gb_pal_log);
-	if (!gb_pal_log) { free(r); return -1; }
+	/* The log only has to hold the changes for lines the display hasn't drawn yet, and
+	 * it can be at most a ring behind, so size it from the ring: a streaming game (small
+	 * ring, little spare RAM) gets a small log, a resident one gets a generous one. */
+	free(gb_pal_log);
+	gb_pal_log_n = lines * 16;
+	if (gb_pal_log_n < 1024) gb_pal_log_n = 1024;
+	if (gb_pal_log_n > 4096) gb_pal_log_n = 4096;
+	gb_pal_log = (gb_pal_change_t *)calloc(gb_pal_log_n, sizeof *gb_pal_log);
+	if (!gb_pal_log) { free(r); gb_pal_log_n = 0; return -1; }
 	gb_ring = r;
 	gb_ring_lines = lines;
 	return 0;

@@ -14,3 +14,5 @@
 - `release_check.py` – run before pushing a release: fails if the page header, a manifest, a firmware image
   or the demo zip doesn't match the version in `src/main.cpp`.
 - `gen_patexp.py` – writes `src/gnuboy/patexp.h`, the tile-row lookup tables used by the Game Boy renderer.
+- `hosttest/palstress.c` – runs a ROM against a deliberately slow, uneven display and fails if the emulator
+  has to hold colour changes back; catches stalls between the emulator and the display task.

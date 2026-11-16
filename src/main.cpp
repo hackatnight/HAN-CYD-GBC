@@ -245,15 +245,14 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.3"
+#define APP_VERSION "2.19.4"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
-// Sound waiting to be played, in 128-sample buffers. The emulator can be held up longer
-// than one frame - a battery-RAM autosave, a bank read from the SD card - and anything
-// longer than this much sound runs the speaker dry and is heard as a stutter. 16 buffers
-// is 93 ms and costs 4 KB of RAM more than the 8 (46 ms) used before.
-#define AUDIO_DMA_BUFS 16
+// Sound waiting to be played, in 128-sample buffers (8 = 46 ms). Raising this hides
+// stutters, but the RAM comes out of the pages a big ROM keeps on hand while streaming
+// from the SD card, and 4 MB games slowed badly for it. Fix the stalls instead.
+#define AUDIO_DMA_BUFS 8
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
 #define NES_FRAME_US     16639 // NES NTSC: 60.1 Hz
 #define NES_FRAME_US_PAL 20007 // NES PAL: 50 Hz

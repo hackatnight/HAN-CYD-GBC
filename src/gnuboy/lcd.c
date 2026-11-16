@@ -76,11 +76,13 @@ byte (*gb_ring)[160];   /* gb_ring_lines lines of palette indexes (gb_ring_alloc
  * and, before each line, applies the color changes the game made up to that line, which
  * the emulator logs here. So raster palette effects stay exact, a frame needs half the
  * RAM of RGB565 lines, and the emulator only waits for the display if the log fills up
- * (more than GB_PAL_LOG changes ahead of the display). */
+ * (more changes ahead of the display than the log holds). */
 un16 gb_pal_base[64];
-gb_pal_change_t *gb_pal_log;            /* GB_PAL_LOG entries, allocated with the ring */
+gb_pal_change_t *gb_pal_log;            /* gb_pal_log_n entries, allocated with the ring */
+int gb_pal_log_n;
 volatile unsigned gb_pal_w, gb_pal_r;   /* written by the emulator / read by the display */
 volatile unsigned gb_pal_frame;         /* counts drawn frames */
+unsigned gb_pal_dropped;                /* colour changes the full log pushed to a later line */
 static un16 pal_shadow[64];
 static unsigned pal_ver = 1, pal_snap_ver = 0;
 int gb_ring_lines = GB_RING;
@@ -219,6 +221,28 @@ static void IRAM_ATTR tilebuf()
 }
 
 
+/* Eight pixels (one tile row) into the line. The ESP32 traps unaligned 32-bit access and
+ * fixes it up in software, which is far slower than the bytes it saves, so the word path
+ * is used only when both addresses are aligned - the line's start moves with the scroll,
+ * so that is roughly one tile row in four. `b` is OR-ed into every pixel (the colour
+ * palette number); it is 0 for the plain copy, and no byte can carry into the next. */
+inline static void copy8(byte *dest, const byte *src, un32 m)
+{
+	if (((((uintptr_t)dest) | ((uintptr_t)src)) & 3) == 0)
+	{
+		un32 *d = (un32 *)dest;
+		const un32 *s = (const un32 *)src;
+		d[0] = s[0] | m;
+		d[1] = s[1] | m;
+	}
+	else
+	{
+		int i;
+		byte v = (byte)m;
+		for (i = 0; i < 8; i++) dest[i] = src[i] | v;
+	}
+}
+
 static void IRAM_ATTR bg_scan()
 {
 	int cnt;
@@ -266,14 +290,7 @@ static void IRAM_ATTR bg_scan()
 	{
 		src = get_patpix(*(tile++), V);
 
-#if 0
-		MEMCPY8(dest, src);
-#else
-		int* tmpDest =(int*)dest;
-		int* tmpSrc = (int*)src;
-		tmpDest[0] = tmpSrc[0];
-		tmpDest[1] = tmpSrc[1];
-#endif
+		copy8(dest, src, 0);
 
 		dest += 8;
 		cnt -= 8;
@@ -298,14 +315,7 @@ static void IRAM_ATTR wnd_scan()
 	{
 		src = get_patpix(*(tile++), WV);
 
-#if 0
-		MEMCPY8(dest, src);
-#else
-		int* tmpDest =(int*)dest;
-		int* tmpSrc = (int*)src;
-		tmpDest[0] = tmpSrc[0];
-		tmpDest[1] = tmpSrc[1];
-#endif
+		copy8(dest, src, 0);
 
 		dest += 8;
 		cnt -= 8;
@@ -317,17 +327,7 @@ static void IRAM_ATTR wnd_scan()
 
 inline static void blendcpy(byte *dest, byte *src, byte b, int cnt)
 {
-	/* A whole tile at once: eight pixels are two 32-bit words, and the palette number
-	 * goes into every byte of the mask. Same word trick the DMG path above uses. */
-	if (cnt == 8)
-	{
-		const un32 m = 0x01010101u * b;
-		un32 *d = (un32 *)dest;
-		const un32 *s = (const un32 *)src;
-		d[0] = s[0] | m;
-		d[1] = s[1] | m;
-		return;
-	}
+	if (cnt == 8) { copy8(dest, src, 0x01010101u * b); return; }
 	while (cnt--) *(dest++) = *(src++) | b;
 }
 
@@ -726,8 +726,8 @@ if (fb.enabled)
 					if (PAL2[i] != pal_shadow[i])
 					{
 						gb_pal_change_t *e;
-						if (gb_pal_w - gb_pal_r >= GB_PAL_LOG) { full = 1; break; }
-						e = &gb_pal_log[gb_pal_w % GB_PAL_LOG];
+						if ((int)(gb_pal_w - gb_pal_r) >= gb_pal_log_n) { full = 1; gb_pal_dropped++; break; }
+						e = &gb_pal_log[gb_pal_w % (unsigned)gb_pal_log_n];
 						e->line = (byte)L;
 						e->index = (byte)i;
 						e->color = pal_shadow[i] = PAL2[i];
@@ -875,7 +875,7 @@ void gb_ring_line_rgb(int line, un16 *out)
 	}
 	while (gb_pal_r != gb_pal_w)
 	{
-		const gb_pal_change_t *e = &gb_pal_log[gb_pal_r % GB_PAL_LOG];
+		const gb_pal_change_t *e = &gb_pal_log[gb_pal_r % (unsigned)gb_pal_log_n];
 		if (e->line > line) break;
 		pal[e->index & 63] = e->color;
 		gb_pal_r = gb_pal_r + 1;

@@ -612,8 +612,10 @@ writes each color change (line, slot, color) to a log as it draws, and the displ
 each line, starting from the colors in effect at line 0. The log holds 2048 changes and the emulator never
 waits on it: if a frame fills it, the rest are retried on the next line, so they show a line or two late
 rather than holding the emulator up.
+The log is sized from the ring (a game streaming from the SD card has a small ring and
+gets a small log), because on a 4 MB game every kilobyte here is one fewer 4 KB page of ROM kept in RAM.
 `tools/hosttest/ringcheck.c` checks the ring against the core's own output, pixel for pixel, with a deliberately
-slow and jittery display thread.
+slow and jittery display thread, and `palstress.c` checks that no colour change is ever held back.
 
 **No frame buffer.** The board has only about 300 KB of RAM and no PSRAM.
 - GB/GBC lines go straight to the ring as screen colors, so Game Boy Color "hi-color" pictures come out exactly right.
