@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.7.1"
+#define APP_VERSION "2.7.2"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -3740,7 +3740,7 @@ static int browserMarq = -1;   // entry whose name is scrolling (-1 = none)
 // under the title bar; portrait has an "A-Z" button that opens a grid of letters.
 // Controller: Select opens it. Only shown when the folder doesn't fit on one screen. ----
 #define AZ_N 27
-#define AZ_STRIP_H 18
+#define AZ_STRIP_H 14   // 34 + 14 + 6 rows x 32 = 240: six games in landscape
 static uint32_t azMask = 0;   // letters that have at least one entry
 static int azLetter(const char *n) {
   int c = toupper((unsigned char)n[0]);
@@ -3773,7 +3773,7 @@ static void azDrawStrip(int focus) {
   const int y = 34, cur = azCurrent();
   lcd.startWrite();
   lcd.fillRect(0, y, SCR_W, AZ_STRIP_H, C_BG);
-  lcd.setFont(&fonts::Font2);
+  lcd.setFont(&fonts::Font0);   // small 6x8 letters
   lcd.setTextDatum(middle_center);
   for (int i = 0; i < AZ_N; i++) {
     int cx = 4 + (int)(cw * (i + 0.5f));
@@ -3781,15 +3781,16 @@ static void azDrawStrip(int focus) {
     uint16_t bg = C_BG;
     if (i == focus) {
       bg = C_HILITE;
-      lcd.fillRoundRect(cx - 6, y, 13, AZ_STRIP_H - 1, 3, bg);
-      lcd.drawRoundRect(cx - 6, y, 13, AZ_STRIP_H - 1, 3, C_ACCENT);
+      lcd.fillRoundRect(cx - 5, y, 11, AZ_STRIP_H - 1, 3, bg);
+      lcd.drawRoundRect(cx - 5, y, 11, AZ_STRIP_H - 1, 3, C_ACCENT);
     }
     lcd.setTextColor(i == cur ? C_ACCENT : have ? C_TEXT : azDimColor(), bg);
     char t[2] = { azChar(i), 0 };
-    lcd.drawString(t, cx, y + 8);
-    if (i == cur && focus < 0) lcd.drawFastHLine(cx - 4, y + AZ_STRIP_H - 2, 9, C_ACCENT);
+    lcd.drawString(t, cx + 1, y + 6);
+    if (i == cur && focus < 0) lcd.drawFastHLine(cx - 3, y + AZ_STRIP_H - 3, 7, C_ACCENT);
   }
   lcd.setTextDatum(top_left);
+  lcd.setFont(&fonts::Font2);
   lcd.endWrite();
 }
 
