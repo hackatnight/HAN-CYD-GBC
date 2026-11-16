@@ -229,3 +229,141 @@ def preview(img, scale=4, path=None):
     if path:
         im.save(path)
     return im
+
+
+# ---------------------------------------------------------------- vector shapes with a small H@N
+# Colors: 1 = far side of the shape, 2 = near side, 3 = the small H@N (recolored separately).
+def _rot(p, ay=0.0, ax=0.0):
+    x, y, z = p
+    ca, sa = math.cos(ay), math.sin(ay)
+    x, z = x * ca - z * sa, x * sa + z * ca
+    cb, sb = math.cos(ax), math.sin(ax)
+    y, z = y * cb - z * sb, y * sb + z * cb
+    return x, y, z
+
+
+def _proj(p, w, h, scale, dist=5.0, cx=0.0, cy=0.0):
+    x, y, z = p
+    s = scale * dist / (z + dist)
+    return w / 2 + (x + cx) * s, h / 2 + (y + cy) * s
+
+
+def _han_strokes():
+    """A simple stroke H@N (polylines, x -1.5..1.5, y -0.5..0.5) that stays readable when small."""
+    S = []
+    S.append([(-1.5, -0.5), (-1.5, 0.5)])
+    S.append([(-0.95, -0.5), (-0.95, 0.5)])
+    S.append([(-1.5, 0.0), (-0.95, 0.0)])
+    ring = [(0.5 * math.cos(a), 0.5 * math.sin(a)) for a in
+            [math.radians(d) for d in range(20, 360, 30)] + [math.radians(380)]]
+    S.append([(x, y) for x, y in ring[:-1]] + [(0.5 * math.cos(math.radians(20)), 0.18)])
+    S.append([(0.2 * math.cos(math.radians(d)), 0.2 * math.sin(math.radians(d))) for d in range(0, 361, 45)])
+    S.append([(0.2, -0.2), (0.2, 0.18), (0.47, 0.18)])
+    S.append([(0.95, 0.5), (0.95, -0.5), (1.5, 0.5), (1.5, -0.5)])
+    return S
+
+
+def small_han(w, h, scale, center=(0.0, 0.0, 0.0), size=0.62, ay=0.0, ax=0.18, dist=5.0, depth=0.12):
+    """Line list for a small extruded stroke H@N (color 3) centred at a view-space point."""
+    lines = []
+    k = size / 1.5
+    cxp, cyp, czp = center
+    def P(x, y, z):
+        x, y, z = _rot((x * k, y * k, z), ay, ax)
+        return _proj((x + cxp, y + cyp, z + czp), w, h, scale, dist)
+    for st in _han_strokes():
+        f = [P(x, y, -depth) for x, y in st]
+        b = [P(x, y, depth) for x, y in st]
+        for i in range(len(st) - 1):
+            lines.append((*f[i], *f[i + 1], 3))
+            lines.append((*b[i], *b[i + 1], 3))
+        lines.append((*f[0], *b[0], 3))
+        lines.append((*f[-1], *b[-1], 3))
+    return lines
+
+
+def _edges(verts, edges, w, h, scale, dist=5.0, split=0.0):
+    out = []
+    pts = [_proj(v, w, h, scale, dist) for v in verts]
+    for a, b in edges:
+        z = (verts[a][2] + verts[b][2]) / 2
+        out.append((*pts[a], *pts[b], 2 if z < split else 1))
+    return out
+
+
+def _dots(points, w, h, scale, dist=5.0, r=1.1):
+    """Round dots for the dot ball, drawn as tiny crosses so they survive the 0.3 cover rule."""
+    out = []
+    for p in points:
+        x, y = _proj(p, w, h, scale, dist)
+        c = 2 if p[2] < 0 else 1
+        rr = r * (1.25 if c == 2 else 0.8)
+        out.append((x - rr, y, x + rr, y, c))
+        out.append((x, y - rr, x, y + rr, c))
+    return out
+
+
+def sphere_frame(i, n, w, h, rings=7, per=16):
+    """Dot ball: latitude rings of dots; it turns one dot spacing every n/4 frames... the
+    whole loop (n frames) turns 4 spacings, and the H@N inside nods once."""
+    t = i / n
+    ay = 4 * t * 2 * math.pi / per
+    pts = []
+    for r in range(rings):
+        lat = math.pi * (r + 1) / (rings + 1) - math.pi / 2
+        for k in range(per):
+            lon = 2 * math.pi * k / per + (math.pi / per if r % 2 else 0)
+            p = (math.cos(lat) * math.cos(lon), math.sin(lat), math.cos(lat) * math.sin(lon))
+            pts.append(_rot(p, ay, 0.42))
+    pts += [_rot((0, -1, 0), 0, 0.42), _rot((0, 1, 0), 0, 0.42)]
+    scale = min(w, h) * 0.44
+    lines = _dots(pts, w, h, scale)
+    lines += small_han(w, h, scale, size=0.58, ay=0.55 * math.sin(2 * math.pi * t), ax=0.1)
+    return _draw(lines, w, h)
+
+
+def pyramid_frame(i, n, w, h):
+    """Square pyramid turning a full circle, with a small H@N orbiting it the other way."""
+    t = i / n
+    ay = 2 * math.pi * t
+    verts = [(-0.85, 0.65, -0.85), (0.85, 0.65, -0.85), (0.85, 0.65, 0.85), (-0.85, 0.65, 0.85), (0, -0.95, 0)]
+    edges = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 4), (1, 4), (2, 4), (3, 4)]
+    v = [_rot(p, ay, 0.38) for p in verts]
+    scale = min(w * 0.27, h * 0.42)
+    lines = _edges(v, edges, w, h, scale)
+    th = -2 * math.pi * t
+    c = _rot((1.1 * math.cos(th), 0.2, 1.1 * math.sin(th)), 0, 0.38)
+    lines += small_han(w, h, scale, center=c, size=0.45, ay=0.5 * math.sin(th), ax=0.15)
+    return _draw(lines, w, h)
+
+
+def dcube_frame(yaw, pitch, w, h):
+    """The D-pad cube at one yaw/pitch, with the small H@N standing still inside it."""
+    v = [_rot(_rot(p, yaw, 0.0), 0.0, pitch) for p in CUBE_V]
+    scale = min(w, h) * 0.27
+    lines = _edges(v, CUBE_E, w, h, scale)
+    lines += small_han(w, h, scale, size=0.85, ay=0.0, ax=0.0)
+    return _draw(lines, w, h)
+
+
+TESS_V = [(x, y, z, q) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1) for q in (-1, 1)]
+TESS_E = [(a, b) for a in range(16) for b in range(a + 1, 16)
+          if sum(TESS_V[a][k] != TESS_V[b][k] for k in range(4)) == 1]
+
+
+def tesseract_frame(i, n, w, h):
+    """A 4D hypercube turning in the XW and YZ planes (a quarter turn loops), seen in 3D,
+    with the small H@N swinging in its core."""
+    t = i / n
+    a = t * math.pi / 2
+    ca, sa = math.cos(a), math.sin(a)
+    out = []
+    for x, y, z, q in TESS_V:
+        x, q = x * ca - q * sa, x * sa + q * ca
+        y, z = y * ca - z * sa, y * sa + z * ca
+        k = 2.6 / (3.6 - q)                 # 4D -> 3D perspective
+        out.append(_rot((x * k, y * k, z * k), 0.6, 0.45))
+    scale = min(w, h) * 0.25
+    lines = _edges(out, TESS_E, w, h, scale)
+    lines += small_han(w, h, scale, size=0.8, ay=0.6 * math.sin(2 * math.pi * t), ax=0.12)
+    return _draw(lines, w, h)

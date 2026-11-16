@@ -347,24 +347,34 @@ On the web page, **Send the demos to my board** copies all three over USB in one
 
 | Scene | What it shows |
 |---|---|
-| Intro | Typed text over a parallax starfield (sprites) |
-| Wireframe H@N | The boot screen's 3D H@N outline swinging in perspective; back edges dim, front edges bright |
-| Spinning cubes | Two wireframe cubes turning opposite ways, nearer edges brighter |
-| Raster wobble + scroller | Text rows bent one scanline at a time, plus a sprite sine scroller. On the GBC the text color changes every line (rainbow); on the NES it cycles |
+| Intro | "H@N presents", the system's name and hackatnight.com typed out over a drifting starfield |
+| Wireframe H@N | The boot screen's 3D H@N outline swinging in perspective, with a warp starfield |
+| Spinning cubes | Two wireframe cubes turning opposite ways, with falling stars |
+| Dot ball | A sphere of dots turning, a small H@N inside, twinkling stars |
+| Pyramid | A wireframe pyramid with a small H@N orbiting it, diagonal stars |
+| D-pad cube | A cube you spin with the D-pad (each press pushes the spin that way), H@N inside; the stars stream against the spin |
+| Tesseract | A 4D hypercube turning inside out, H@N in its core, warp-in starfield |
+| Raster wobble + scroller | Text rows bent one scanline at a time, plus a sprite sine scroller with demoscene greetings |
 | Input test | A controller drawing; each button lights up while held, with its name |
 
-Controls: **A** next scene, **B** music on/off, **START** input test. The input test goes back to the intro after
-about 13 seconds without a press. It plays a short original chiptune.
+HACKATNIGHT.COM flies across every scene on a row nothing else uses.
+
+Controls: **A** next scene, **B** next tune (Night Drive, Starfield, Pixel Parade, Vector Balls, Arpeggio, then off;
+the tune's name shows on the hint row). In the shape scenes **SELECT** recolors the shape and **START** recolors the
+H@N (8 colors each; Game Boy Color and NES), and **left / right** turns the spin around. While you're pressing buttons
+a scene stays put; the input test goes back to the intro after about 13 seconds without a press.
 
 How it works:
-- **Game Boy / GBC** (one ROM, MBC5, 256 KB; the .gbc copy runs in color mode with per-scene palettes). The 3D
+- **Game Boy / GBC** (one ROM, MBC5, 512 KB; the .gbc copy runs in color mode with per-scene palettes). The 3D
   frames are rendered on a PC and stored in the ROM. Two copies of the picture's tiles sit in video memory and the
   screen shows one while the next frame is copied into the other, two bytes at a time whenever the LCD allows it;
   then they swap. The wobble changes the horizontal scroll in every HBlank, and on the GBC the same interrupt
   rewrites a palette color for each line.
 - **NES** (mapper 4 / MMC3, 32 KB code, 256 KB graphics). Each 3D frame is its own pair of 1 KB graphics banks, so
-  showing the next frame is just two mapper writes: a smooth 30 frames per second. The wobble uses the MMC3's
+  showing the next frame is just two mapper writes. The wobble and the flying hackatnight.com use the MMC3's
   scanline interrupt to change the scroll every two lines.
+- **Music**: four channels (two pulses, the GB wave / NES triangle for bass, noise for drums) playing the same note
+  data as the firmware's menu tunes, from [`tools/demos/tunes.py`](tools/demos/tunes.py).
 - Everything is built from scratch by [`tools/demos/build.py`](tools/demos): a small assembler for each CPU
   (`sm83asm.py`, `asm6502.py`), the demo code (`gb_demo.asm`, `nes_demo.asm`), and the graphics (`gfx.py`, using the
   same wireframe outline as the firmware). `gbrun.c` and `nesrun.c` run the ROMs in the firmware's own emulator
