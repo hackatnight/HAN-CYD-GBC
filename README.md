@@ -12,7 +12,7 @@ and a one-click web flasher.
 > ESP32-2432S028R, resistive-touch versions, S3 boards...) use different screens, touch chips and
 > pins. It won't work on them and will most likely show a blank screen.
 
-**Flash it from your browser:** <https://hackatnight.github.io/HAN-CYD-GBC/>
+**Flash it from your browser:** <https://hackatnight.com/HAN-CYD-GBC/>
 
 ---
 
@@ -67,7 +67,7 @@ Steps:
 1. **Pick a build.**
    - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
    - **Touch-only:** plays with on-screen buttons in portrait. It has 3.3 MB of flash for games and more free memory.
-2. **Flash it:** open the **[web flasher](https://hackatnight.github.io/HAN-CYD-GBC/)**, plug the board in, click
+2. **Flash it:** open the **[web flasher](https://hackatnight.com/HAN-CYD-GBC/)**, plug the board in, click
    *Install*, pick the board's port, choose *Erase* and wait about a minute.
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
    games into them. Optional: unzip the [cheat pack](docs/cheats/HAN-CHEATS-GB-GBC-NES.zip) to the root of the card.
@@ -86,7 +86,7 @@ and controller pairings. Your saves are on the SD card and aren't touched.
 
 ### Option 1: web flasher (easiest)
 
-Open **<https://hackatnight.github.io/HAN-CYD-GBC/>** in Chrome or Edge on a computer. The page uses
+Open **<https://hackatnight.com/HAN-CYD-GBC/>** in Chrome or Edge on a computer. The page uses
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and has both builds built in.
 
 1. Click **Install Bluetooth build** or **Install touch-only build**.
@@ -364,7 +364,7 @@ If the board restarts on its own, the next boot tells you why (power dip, crash 
 
 ## Building from source
 
-The [web flasher](https://hackatnight.github.io/HAN-CYD-GBC/) is all you need to play. To build it yourself:
+The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play. To build it yourself:
 
 1. **Arduino IDE or arduino-cli** with:
    - **Bluetooth build:** the *esp32_bluepad32* 4.1.0 board package. Board manager URL:
