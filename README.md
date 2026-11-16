@@ -127,6 +127,8 @@ and click *Program*.
 - Put games under **`/Roms`**, in any folders and sub-folders you like. The file extension picks the emulator,
   so one folder can mix systems.
 - The game list starts in `/Roms`. If there's no `/Roms` folder, it starts at the root of the card.
+- Other folders at the top of the card are ignored when `/Roms` exists. For example, a `DCIM` folder that a camera or
+  card reader adds won't show up or get in the way.
 - **`/CHEATS`** holds cheat files in `GB`, `GBC` and `NES` sub-folders. It never shows in the game list.
 - **`/gbc/saves`** is created for you. It holds battery saves (`.sav`, plus `.rtc` for clock games) and save
   states (`.st0`). It's hidden from the game list too.
@@ -216,7 +218,13 @@ The top of the main list has shortcuts, so you don't have to dig through thousan
 | 🕒 **Recent** | Your last 15 games, newest first |
 | 📊 **Most played** | Your top 15 by total time played, with the time shown |
 
-Each row only appears once it has something in it.
+Each row only appears once it has something in it, so after a fresh flash or with a new card the list looks the
+same as before.
+1. Play any game for a moment, then choose *Save & quit to list*.
+2. Go back up to the **main list**, the first screen with your GB / GBC / NES folders. The rows only show there,
+   not inside a system folder.
+
+Continue, Recent and Most played then appear. Favorites appears once you mark your first one.
 
 **Marking a favorite:** either way switches it on and off.
 - **Hold your finger on a game** in any list for half a second. The LED blinks if *Flash on cheat* is on.
@@ -326,7 +334,13 @@ and Pro Action Replay codes work.
 | Free memory | Free RAM while browsing (games get more, because the list is freed while playing) |
 | Controller (Bluetooth build) | Bluetooth on/off, pair, button layout, on-screen buttons (Auto / Always / Never), forget controllers |
 
-To reset every setting, including touch calibration, hold **BOOT** while powering on.
+**Settings are saved on the board** the moment you change them, and they're still there after turning it off and on.
+That covers Game volume, music on/off, tune and volume, theme, LED, scaling, orientation, button layout and so on.
+- For example, with *Music: Off* the board starts silent.
+- Two things put everything back to the defaults:
+  - **holding BOOT while powering on**
+  - **flashing a merged `.bin`**, which includes the web flasher
+- Your saves, save states, cheats, favorites and play history live on the SD card, so neither of those touches them.
 
 **Music** (*Setup → Music*):
 
