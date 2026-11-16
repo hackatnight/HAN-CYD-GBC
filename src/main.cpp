@@ -183,7 +183,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.15.0"
+#define APP_VERSION "2.15.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1092,26 +1092,73 @@ static void uiHeader(const char *title, const char *right = nullptr, const char 
   lcd.setTextDatum(top_left);
 }
 
-// ---- controller button hints: PlayStation symbols drawn with code ----
-// Shown only while a controller is connected. Which symbol means OK / Back follows the
-// "Button layout" setting (Game Boy layout: Circle = OK, Cross = Back; Xbox: swapped).
+// ---- controller button hints, drawn with code ----
+// Shown only while a controller is connected, with the marks printed on that controller:
+//   PlayStation: Cross (bottom) and Circle (right)
+//   Xbox, Stadia, Android pads: A (bottom) and B (right)
+//   Nintendo Switch, 8BitDo: B (bottom) and A (right)
+// Which button means OK / Back follows the "Button layout" setting (Game Boy layout:
+// right = OK, bottom = Back; Xbox layout: swapped). Icons say which physical button.
 static bool padHints() { return HAVE_BT && btCount() > 0; }
-enum { ICON_CIRCLE = 0, ICON_CROSS = 1 };
-static int okIcon() { return cfg.btLayout ? ICON_CROSS : ICON_CIRCLE; }
-static int backIcon() { return cfg.btLayout ? ICON_CIRCLE : ICON_CROSS; }
+enum { ICON_RIGHT = 0, ICON_BOTTOM = 1 };   // the face button on the right / at the bottom
+static int okIcon() { return cfg.btLayout ? ICON_BOTTOM : ICON_RIGHT; }
+static int backIcon() { return cfg.btLayout ? ICON_RIGHT : ICON_BOTTOM; }
 
-static void drawPadIcon(int cx, int cy, int which) {
-  if (which == ICON_CIRCLE) {
-    uint16_t c = RGB565(0xF0, 0x60, 0x68);   // PlayStation red
-    lcd.drawCircle(cx, cy, 4, c);
-    lcd.drawCircle(cx, cy, 3, c);
-  } else {
-    uint16_t c = RGB565(0x78, 0xA8, 0xF0);   // PlayStation blue
-    for (int o = 0; o < 2; o++) {
-      lcd.drawLine(cx - 4 + o, cy - 4, cx + 3 + o, cy + 3, c);
-      lcd.drawLine(cx - 4 + o, cy + 3, cx + 3 + o, cy - 4, c);
+enum { PAD_PS = 0, PAD_XBOX = 1, PAD_NINTENDO = 2 };
+static int padFamily() {
+#if HAVE_BT
+  for (auto c : btCtl) {
+    if (!c || !c->isConnected()) continue;
+    switch (c->getModel()) {
+      case CONTROLLER_TYPE_PS3Controller:
+      case CONTROLLER_TYPE_PS4Controller:
+      case CONTROLLER_TYPE_PS5Controller:
+        return PAD_PS;
+      case CONTROLLER_TYPE_SwitchProController:
+      case CONTROLLER_TYPE_SwitchJoyConLeft:
+      case CONTROLLER_TYPE_SwitchJoyConRight:
+      case CONTROLLER_TYPE_SwitchJoyConPair:
+      case CONTROLLER_TYPE_8BitdoController:
+        return PAD_NINTENDO;
+      default:
+        return PAD_XBOX;
     }
   }
+#endif
+  return PAD_PS;
+}
+
+static void drawPadIcon(int cx, int cy, int which) {
+  int fam = padFamily();
+  if (fam == PAD_PS) {
+    if (which == ICON_RIGHT) {
+      uint16_t c = RGB565(0xF0, 0x60, 0x68);   // PlayStation red circle
+      lcd.drawCircle(cx, cy, 4, c);
+      lcd.drawCircle(cx, cy, 3, c);
+    } else {
+      uint16_t c = RGB565(0x78, 0xA8, 0xF0);   // PlayStation blue cross
+      for (int o = 0; o < 2; o++) {
+        lcd.drawLine(cx - 4 + o, cy - 4, cx + 3 + o, cy + 3, c);
+        lcd.drawLine(cx - 4 + o, cy + 3, cx + 3 + o, cy - 4, c);
+      }
+    }
+    return;
+  }
+  // a lettered button: Xbox colors (A green, B red), Nintendo plain gray
+  bool bottom = which == ICON_BOTTOM;
+  char letter = fam == PAD_XBOX ? (bottom ? 'A' : 'B') : (bottom ? 'B' : 'A');
+  uint16_t ring = fam == PAD_XBOX ? (letter == 'A' ? RGB565(0x60, 0xC8, 0x50) : RGB565(0xF0, 0x58, 0x50))
+                                  : RGB565(0xC8, 0xCC, 0xD4);
+  lcd.fillCircle(cx, cy, 5, ring);
+  const lgfx::IFont *f = lcd.getFont();
+  lcd.setFont(&fonts::Font0);
+  lcd.setTextColor(TFT_BLACK);
+  uint8_t d = lcd.getTextDatum();
+  lcd.setTextDatum(middle_center);
+  char t[2] = { letter, 0 };
+  lcd.drawString(t, cx + 1, cy + 1);
+  lcd.setTextDatum(d);
+  lcd.setFont(f);
 }
 
 static void uiHeaderIcon(int cx, int cy, bool back) { drawPadIcon(cx, cy, back ? backIcon() : okIcon()); }

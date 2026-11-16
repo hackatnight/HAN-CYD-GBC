@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC Bluetooth (PS4)",
-  "version": "2.15.0",
+  "version": "2.15.1",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32", "parts": [ { "path": "HAN-CYD-GBC-BT.bin", "offset": 0 } ] }

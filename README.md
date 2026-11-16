@@ -368,7 +368,7 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 | Controller | In a game | In menus |
 |---|---|---|
 | D-pad or left stick | D-pad | Move (hold to repeat) |
-| ◯ / ✕ (Game Boy layout) | A / B | OK / Back |
+| Right / bottom face button (Game Boy layout) | A / B | OK / Back |
 | Options | START | Opens Setup from the game list |
 | Share | SELECT | A–Z jump in the game list |
 | PS button | Pause menu | Close the menu |
@@ -376,7 +376,8 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 - On Xbox and Switch controllers, Options / Share / PS are Menu / View / Xbox (or + / − / Home).
 - The default **Button layout** is "Game Boy": the right button is A, like on a real Game Boy. Switch it to "Xbox"
   in *Setup → Controller* if you'd rather have the bottom button as A.
-- With a controller connected, menus show which buttons do OK and Back.
+- With a controller connected, menus show which buttons do OK and Back, using the marks on that controller:
+  ◯ / ✕ on PlayStation, B / A on Xbox-style pads, A / B on Switch and 8BitDo.
 - Every menu also has a touch Back button, so you're never stuck if the controller drops out.
 
 ### Pause menu, save states and cheats

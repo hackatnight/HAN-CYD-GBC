@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-2432S032C (3.2\", capacitive touch)",
-  "version": "2.15.0",
+  "version": "2.15.1",
   "new_install_prompt_erase": true,
   "builds": [
     {
