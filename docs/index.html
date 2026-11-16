@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H@N-CYD-GBC web flasher</title>
+<meta name="description" content="Flash the H@N-CYD-GBC Game Boy, Game Boy Color and NES emulator to an ESP32-2432S024C from your browser.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #0e1622; --panel: #1d2a38; --hilite: #34495e; --accent: #86a8c4;
+    --bronze: #9a8462; --text: #e4ecf2; --dim: #8494a5; --warn: #e0a8a0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { background: linear-gradient(#6a7e92, #263444); border-top: 1px solid #c8d6e2; border-bottom: 3px solid var(--bronze); padding: 18px 24px; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+  header p { margin: 4px 0 0; color: #c8d6e2; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .hero { display: block; width: 100%; max-width: 640px; margin: 0 auto 24px; border-radius: 10px; image-rendering: pixelated; }
+  .warn { background: #2a1c1c; border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; }
+  .warn strong { color: #ffd2cc; }
+  .builds { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-bottom: 28px; }
+  .card { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 18px 20px; }
+  .card h2 { margin: 0 0 6px; font-size: 20px; }
+  .card ul { padding-left: 20px; color: var(--dim); margin: 8px 0 16px; }
+  esp-web-install-button button, .btn {
+    background: var(--hilite); color: var(--text); border: 1px solid var(--accent); border-radius: 8px;
+    padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  esp-web-install-button button:hover, .btn:hover { background: #3f5770; }
+  .unsupported { color: var(--warn); }
+  h3 { color: var(--accent); margin-top: 28px; }
+  ol li { margin-bottom: 6px; }
+  code { background: var(--panel); padding: 1px 6px; border-radius: 4px; }
+  a { color: var(--accent); }
+  footer { color: var(--dim); text-align: center; padding: 24px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>H@N-CYD-GBC</h1>
+  <p>Game Boy, Game Boy Color and NES on the 2.4" ESP32-2432S024C. Version 2.7.1.</p>
+</header>
+<main>
+  <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
+
+  <div class="warn">
+    <strong>This firmware only works on the ESP32-2432S024C</strong> (2.4" "Cheap Yellow Display" with the
+    CST820 capacitive touch screen). Other CYD boards use different screens, touch chips and pins.
+    They won't work and may show a blank screen. Flashing replaces whatever is on the board now.
+  </div>
+
+  <div class="builds">
+    <div class="card">
+      <h2>Bluetooth (PS4)</h2>
+      <ul>
+        <li>Pairs a PS4 (DualShock 4) controller</li>
+        <li>Landscape by default; touch works too</li>
+        <li>2.9 MB of flash for games</li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-BT.json">
+        <button slot="activate">Install Bluetooth build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <h2>Touch only</h2>
+      <ul>
+        <li>On-screen buttons, portrait</li>
+        <li>No Bluetooth</li>
+        <li>3.3 MB of flash for games</li>
+      </ul>
+      <esp-web-install-button manifest="firmware/manifest-touch.json">
+        <button slot="activate">Install touch-only build</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
+      </esp-web-install-button>
+    </div>
+  </div>
+
+  <h3>How to flash</h3>
+  <ol>
+    <li>Use <strong>Chrome or Edge on a computer</strong> (Windows, Mac, Linux or ChromeOS). Phones and Firefox/Safari can't flash.</li>
+    <li>Plug the board in with a USB cable that carries data (some cables only charge).</li>
+    <li>Click one of the Install buttons above and pick the board's port in the list
+      (often <code>USB-SERIAL CH340</code> or <code>CP210x</code>). If no port shows up, install the
+      <a href="https://www.wch-ic.com/downloads/CH341SER_ZIP.html">CH340 driver</a> and try again.</li>
+    <li>Choose <strong>Erase</strong> the first time you flash, then <strong>Install</strong>. It takes about a minute.</li>
+    <li>If it can't connect, hold the board's <strong>BOOT</strong> button, tap <strong>RST</strong>, release BOOT and click Install again.</li>
+    <li>When it's done, press RST (or unplug and replug). The H@N boot screen appears.</li>
+  </ol>
+
+  <h3>Then set up the SD card</h3>
+  <p>Format a microSD card as FAT32 and make <code>/Roms/GB</code>, <code>/Roms/GBC</code> and <code>/Roms/NES</code>.
+  Put your own game files in them (<code>.gb</code>, <code>.gbc</code>, <code>.nes</code>); sub-folders are fine.
+  Cheats go in <code>/CHEATS/GB</code>, <code>/CHEATS/GBC</code> and <code>/CHEATS/NES</code>:
+  <a href="cheats/HAN-CHEATS-GB-GBC-NES.zip">download the ready-made cheat pack</a> (2,572 games) and unzip it to the root of the card.
+  The full guide is in the <a href="https://github.com/hackatnight/HAN-CYD-GBC#readme">README on GitHub</a>.</p>
+
+  <h3>Prefer the command line?</h3>
+  <p>Download a <code>.bin</code> from the <a href="https://github.com/hackatnight/HAN-CYD-GBC/tree/main/docs/firmware">firmware folder</a> and run:</p>
+  <p><code>esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-BT.bin</code></p>
+</main>
+<footer>
+  H@N-CYD-GBC by <a href="https://hackatnight.com">hackatnight.com</a> ·
+  <a href="https://github.com/hackatnight/HAN-CYD-GBC">source on GitHub</a> ·
+  flashing by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+</footer>
+</body>
+</html>

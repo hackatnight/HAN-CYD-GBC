@@ -1,324 +1,416 @@
-# H@N-CYD-GBC v2.5.0: Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C
+# H@N-CYD-GBC
 
-Runs .gb, .gbc and .nes ROMs from the SD card on the 2.4" capacitive CYD
-(ILI9341 240x320, CST820 touch, microSD, speaker on GPIO26, no PSRAM).
+**Game Boy, Game Boy Color and NES emulator for the ESP32-2432S024C (2.4" "Cheap Yellow Display")**
+with PS4 Bluetooth controllers, save states, cheats, menu themes, an A–Z game list, board LED effects
+and a one-click web flasher.
 
-## Flash it
+<p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
 
-There are two builds. Both are complete images; write one at **offset 0x0**:
+> [!WARNING]
+> **This firmware only works on the ESP32-2432S024C** (2.4" ILI9341 screen, **CST820 capacitive**
+> touch, microSD slot, speaker connector, 4 MB flash, no PSRAM). Other "CYD" boards (the 2.8"
+> ESP32-2432S028R, resistive-touch versions, S3 boards...) use different screens, touch chips and
+> pins. It won't work on them and will most likely show a blank screen.
 
-- `CYD-GBC-v2.0-BT-ESP32-2432S024C-merged.bin`: Bluetooth controller support (PS4, Stadia, Xbox, Switch, 8BitDo...).
-- `CYD-GBC-v2.0-touch-only-ESP32-2432S024C-merged.bin`: no Bluetooth, about 60 KB more free RAM.
+**Flash it from your browser:** <https://hackatnight.github.io/HAN-CYD-GBC/>
 
-Ways to flash:
+---
 
-- **Browser:** open https://espressif.github.io/esptool-js/, connect, set the address to `0x0`, choose the .bin, then click Program.
-- **esptool:** `esptool.py --chip esp32 --baud 921600 write_flash 0x0 <file>.bin`
+## Contents
 
-Flashing a merged image also clears settings and controller pairings.
-The flash layout changed in v2.1.1: the Bluetooth build has 1 MB for the app and 2.94 MB for ROMs,
-the touch-only build 640 KB for the app and 3.31 MB for ROMs. After flashing, each ROM is
-copied to flash again on its first launch.
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Flashing in detail](#flashing-in-detail)
+- [Setting up the SD card](#setting-up-the-sd-card)
+- [Using it](#using-it): game list, A–Z jump, controls, pause menu, save states, cheats, settings, themes, LED
+- [How it works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Building from source](#building-from-source)
+- [Credits and licenses](#credits-and-licenses)
 
-## SD card
+> The menu pictures in this README are illustrations drawn from the firmware's own layout and colors,
+> not photos of the screen. The boot and loading animations were rendered by the firmware's own
+> wireframe code.
 
-FAT32. Put games in a `/Roms` folder, organized however you like, for example:
+---
 
+## Features
+
+| | |
+|---|---|
+| **Systems** | Game Boy (`.gb`), Game Boy Color (`.gbc`), NES (`.nes`, most licensed games) |
+| **Speed** | Full speed (60 fps emulated, 50 for PAL NES), sound through the board's speaker |
+| **Games** | Read from a microSD card, organized in any folders you like, thousands per folder |
+| **Two builds** | Bluetooth (PS4 controller, landscape) or touch-only (on-screen buttons, portrait, more game space) |
+| **Saving** | Battery saves written automatically, plus one save state per game for every system |
+| **Cheats** | GameShark / Pro Action Replay codes from `.cht` files, a built-in cheat finder, and a ready-made pack for 2,572 games |
+| **Game list** | Folders, scrolling long names, A–Z jump (letter strip in landscape, letter grid in portrait) |
+| **Looks** | Code-drawn wireframe boot and loading screens, 4 menu themes, animated menus |
+| **LED** | The board's RGB LED: solid or breathing in any color, blinks on saves and cheats |
+| **Big games** | Up to 8 MB: what doesn't fit in flash is read from the SD card while you play |
+
+---
+
+## Quick start
+
+You need:
+
+- an **ESP32-2432S024C** board
+- a **microSD card** (any size; it gets formatted FAT32)
+- a **USB cable that carries data** (some cables only charge)
+- **Chrome or Edge on a computer**, for the web flasher
+- optional: a **PS4 (DualShock 4) controller**, for the Bluetooth build
+- your own game files (`.gb`, `.gbc`, `.nes`). This project doesn't include or link to any games.
+
+Steps:
+
+1. **Pick a build.**
+   - **Bluetooth:** best with a PS4 controller. Starts in landscape and has 2.9 MB of flash for games.
+   - **Touch-only:** plays with on-screen buttons in portrait. It has 3.3 MB of flash for games and more free memory.
+2. **Flash it:** open the **[web flasher](https://hackatnight.github.io/HAN-CYD-GBC/)**, plug the board in, click
+   *Install*, pick the board's port, choose *Erase* and wait about a minute.
+3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
+   games into them. Optional: unzip the [cheat pack](docs/cheats/HAN-CHEATS-GB-GBC-NES.zip) to the root of the card.
+4. **Power on:** insert the card and press RST. After the boot animation you'll see your folders.
+5. **Bluetooth build only:** open *Setup → Controller (Bluetooth) → Pair new controller*. Then hold
+   **SHARE + PS** on the PS4 controller until its light bar flashes quickly.
+6. **Tap a game.** The first launch copies it into the board's flash, with a progress bar. After that it starts instantly.
+
+---
+
+## Flashing in detail
+
+Both builds are a single **merged image** that goes at address **0x0**. It contains the bootloader, the
+partition table and the app, so no other files are needed. Flashing a merged image also clears saved settings
+and controller pairings. Your saves are on the SD card and aren't touched.
+
+### Option 1: web flasher (easiest)
+
+Open **<https://hackatnight.github.io/HAN-CYD-GBC/>** in Chrome or Edge on a computer. The page uses
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) and has both builds built in.
+
+1. Click **Install Bluetooth build** or **Install touch-only build**.
+2. Pick the board in the port list. It's usually *USB-SERIAL CH340* or *CP210x*. If nothing shows up, install the
+   [CH340 driver](https://www.wch-ic.com/downloads/CH341SER_ZIP.html), replug the board and try again.
+3. Tick **Erase device** the first time, then **Install**.
+4. When it says done, press **RST** on the board.
+
+If it can't connect, hold **BOOT**, tap **RST**, let go of BOOT and click Install again.
+
+### Option 2: esptool (command line)
+
+The images are in [`docs/firmware/`](docs/firmware):
+
+```sh
+pip install esptool
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-BT.bin
+# or
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-touch.bin
 ```
-/Roms/GB/...        .gb
-/Roms/GBC/RPG/...   .gbc
-/Roms/NES/Action/...  .nes
-```
 
-The browser starts in `/Roms` (or at the card's root if there is no `/Roms` folder) and shows
-folders first, then games. Tap a folder to open it; "< Back", a controller's B button or a
-short press of BOOT goes up one level. Each game's file extension picks the emulator, so a
-folder can mix systems. Folders named `saves` and hidden folders are not shown.
+### Option 3: Espressif's online tool
 
-There is no fixed limit per folder (it used to be 400). Only the names are kept in RAM, so a
-folder can hold a few thousand games; if RAM runs low, the last row says how many weren't
-listed. Since v2.3.2 a folder is read in one pass straight from the card's file system (FatFs):
-names and sizes come from the folder itself and no game file is opened, so the list appears
-as soon as the folder is read and scrolling doesn't touch the card. (v2.3.1 looked up each
-visible row's size by opening the file, which takes about a second per row in a big folder.)
+Open <https://espressif.github.io/esptool-js/>, click *Connect*, set the address to `0x0`, choose the `.bin`
+and click *Program*.
 
-Battery saves are written to `/gbc/saves/<rom name>.sav` (Game Boy, plus `.rtc` files for MBC3
-clock games) and `/gbc/saves/nes/<rom name>.sav` (NES).
-"Write battery save" only works for games whose original cartridge had battery-backed save memory.
-Games without it use passwords, or can't save at all; the menu shows "n/a" for those.
+---
 
-Battery saves are written automatically, but only once the game has stopped changing its
-save RAM (an in-game save is finished), or at least once a minute; pausing and quitting always
-write them. Many games also use their save RAM as work RAM (Super Mario Land 2, many NES games),
-and writing it every 10 s whenever it changed made the game stutter (fixed in v2.3.1 for NES,
-v2.3.3 for Game Boy).
+## Setting up the SD card
 
-### Cheats (v2.5.0)
+<p align="center"><img src="docs/images/sd-layout.png" width="720" alt="SD card folder layout"></p>
 
-Pause menu > **Cheats**: a small memory changer. A cheat keeps game-memory addresses at fixed
-values (infinite lives, health, money, time...), written once per frame. It costs about
-4 bytes of RAM per cheat and nothing when no cheat is on.
+- Format the card as **FAT32**.
+- Put games under **`/Roms`**, in any folders and sub-folders you like. The file extension picks the emulator,
+  so one folder can mix systems.
+- The game list starts in `/Roms`. If there's no `/Roms` folder, it starts at the root of the card.
+- **`/CHEATS`** holds cheat files in `GB`, `GBC` and `NES` sub-folders. It never shows in the game list.
+- **`/gbc/saves`** is created for you. It holds battery saves (`.sav`, plus `.rtc` for clock games) and save
+  states (`.st0`). It's hidden from the game list too.
+- **There's no limit on games per folder.** Only the names are kept in memory, so a folder can hold a few thousand.
+  If memory ever runs short, the last row says how many weren't listed.
 
-- **Cheat files**: RetroArch-style `.cht` files (or simple `Name = CODE` lines) in
-  `/CHEATS/GB/`, `/CHEATS/GBC/` and `/CHEATS/NES/` at the root of the card, one `<game name>.cht` per game. The folder is hidden from the game browser.
-  Codes: GameShark `ttVVLLHH` (GB/GBC; `tt` = 01, or 90-97 for a GBC work RAM bank), NES
-  Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`, or `AAAA=VV` on any system; several codes
-  joined with `+`. Game Genie codes patch the ROM rather than memory: they're listed as "n/a".
-  Switching cheats on or off writes the file back (RetroArch format).
-- **Find a cheat**: the cheat finder. Enter the value you see on screen (e.g. 3 lives),
-  play until it changes, search the new value, and repeat until a few places are left; pick
-  one and the value it should keep. The new cheat is switched on and saved to the file.
-  While searching it uses one bit per byte of game memory (NES up to 1.3 KB, GB 1 KB,
-  GBC 4 KB), freed when the game ends.
+---
 
-### Save states (v2.3.0)
+## Using it
 
-The pause menu has **Save state** and **Load state** for Game Boy, Game Boy Color and NES games:
-one slot per game, saved at any moment and resumed exactly there. State files sit next to the
-battery saves as `<rom name>.st0` (about 34 KB for a GB game, 58 KB for GBC plus its save RAM,
-around 15-30 KB for NES). Saving writes a `.tmp` file first and renames it, so a failed save
-never damages the previous state.
+### The game list
 
-- A state includes the game's save RAM. Loading a state therefore also puts the battery save
-  back to how it was at that moment (it is written to the `.sav` file at the next autosave).
-- A state belongs to one game: loading a state made by another game (or a different version
-  of this firmware) is refused without changing anything.
-- Battery saves still load by themselves when a game starts; load them with the game's own
-  Continue/Load menu as on the real console.
+<p align="center">
+<img src="docs/images/browser-landscape.png" width="400" alt="Game list in landscape with the A-Z strip">
+<img src="docs/images/browser-portrait.png" width="300" alt="Game list in portrait">
+</p>
 
-Tested on a PC: after save, play, load and replay, the picture and sound come out
-byte-for-byte identical (8 Game Boy test ROMs, including paged save RAM, and 261 NES test
-ROMs/demos across mappers 0-5 and others). For NES this needed two additions to nofrendo's
-state format: an extra block with the CPU/PPU/APU timing it left out, and the real CHR-RAM
-bank layout (it assumed CHR-RAM was never banked, which broke MMC1 games).
+- Folders come first, then games, A to Z. Each row shows the system and the file size.
+- **Long names:**
+  - With a controller, the selected row's name scrolls sideways when it's cut off.
+  - With touch, each cut-off name on screen takes a turn scrolling.
+  - Other long names end in `~`.
+- **Swipe** to scroll. Tap a folder to open it and a game to start it. Use **Back**, the controller's Back button or a
+  short press of **BOOT** to go up a folder.
+- The selected row glows, and the header has twinkling stars and a light that runs along its bronze edge.
+- **Hold BOOT for 1 second** to switch to the next screen orientation.
+
+### A–Z jump
+
+This shows up in any folder that doesn't fit on one screen. Letters with no games are dimmed and skipped.
+
+| Landscape: letter strip | Controller on the strip | Portrait: letter grid |
+|---|---|---|
+| <img src="docs/images/browser-landscape.png" width="260"> | <img src="docs/images/az-strip-focus.png" width="260"> | <img src="docs/images/az-grid-portrait.png" width="200"> |
+| Tap a letter. The underlined letter is where you are now. | **Select (Share)** highlights the strip. Left/right picks a letter and the list follows; OK, Select or Down goes there; Back returns to where you were. | Tap **A-Z** (or press Select) to open the grid. Tap a letter, or use the d-pad and OK. |
+
+### Controls
+
+**Touch (portrait, on-screen buttons):**
+
+- D-pad (8-way) on the left. **A** and **B** on the right; touching the gap between them presses both.
+- **SEL** and **START** in the middle. **MENU** or the board's **BOOT** button pauses the game.
+- The touch screen reads one finger at a time (a CST820 limit).
+- With the on-screen buttons hidden, tap anywhere to open the pause menu.
+
+**PS4 controller (Bluetooth build):**
+
+| Controller | In a game | In menus |
+|---|---|---|
+| D-pad or left stick | D-pad | Move (hold to repeat) |
+| ◯ / ✕ (Game Boy layout) | A / B | OK / Back |
+| Options | START | Opens Setup from the game list |
+| Share | SELECT | A–Z jump in the game list |
+| PS button | Pause menu | Close the menu |
+
+- The default **Button layout** is "Game Boy": the right button is A, like on a real Game Boy. Switch it to "Xbox"
+  in *Setup → Controller* if you'd rather have the bottom button as A.
+- With a controller connected, menus show which buttons do OK and Back.
+- Every menu also has a touch Back button, so you're never stuck if the controller drops out.
+
+### Pause menu, save states and cheats
+
+<p align="center"><img src="docs/images/pause-cheats.png" width="720" alt="Pause menu and cheat list"></p>
+
+Open it with MENU, BOOT, the PS button or a tap (when the on-screen buttons are hidden). It has: Resume,
+**Save state**, **Load state**, **Cheats**, **Write battery save**, Volume, Scaling, palette, Show FPS, **LED**,
+Reset game and **Save & quit to list**.
+
+**Battery saves.** These work like the cartridge's own save. They load when the game starts, and the emulator
+writes them to the SD card by itself once the game has finished saving, or at least once a minute. Pausing and
+quitting always write them. Games whose cartridge had no save memory (password games) show "n/a".
+
+**Save states.** One slot per game, on every system. A save state freezes the exact moment so you can resume
+there later.
+- It's written to a temporary file first and then renamed, so a failed save never damages the old one.
+- A state remembers the game's save memory too. Loading it puts the battery save back to that moment as well.
+- A state from another game, or from an older firmware version, is refused without changing anything.
+
+**Cheats.** The emulator re-writes chosen memory addresses with fixed values every frame. That's how GameShark
+and Pro Action Replay codes work.
+- **Codes it reads:**
+  - GB/GBC: GameShark `ttVVLLHH`, where `tt` = `01` normal, `80`–`8F` a save-RAM bank, `90`–`97` a GBC work-RAM bank
+  - NES: Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`
+  - Any system: `AAAA=VV`
+  - Up to 4 codes per cheat, joined with `+`
+- **Game Genie codes** change the game program itself rather than memory. They're listed as "n/a" and can't be
+  switched on yet.
+- **Files:** one RetroArch-style `.cht` file per game in `/CHEATS/GB`, `/CHEATS/GBC` or `/CHEATS/NES`.
+  The emulator finds the file even if the name doesn't match the ROM exactly: it ignores
+  capitals, punctuation and anything in `( )` or `[ ]`, and accepts a single file whose name starts
+  like the ROM's. Switching a cheat on or off saves the file.
+- **Cheat finder:** enter a number you see on screen (for example 3 lives), play until it changes, and enter the
+  new number. Repeat until only a few memory addresses are left, then pick one and the value it should keep.
+  The new cheat is switched on and saved to the file.
+- **Cheat pack:** [`docs/cheats/HAN-CHEATS-GB-GBC-NES.zip`](docs/cheats/HAN-CHEATS-GB-GBC-NES.zip) has usable codes
+  for 739 Game Boy, 548 Game Boy Color and 1,285 NES games. They're filtered from
+  [libretro-database](https://github.com/libretro/libretro-database) (CC BY-SA 4.0) by
+  [`tools/cheats/make_cheat_pack.py`](tools/cheats/make_cheat_pack.py). Unzip it to the root of the card.
+
+### Settings and the LED
+
+<p align="center"><img src="docs/images/settings-led.png" width="720" alt="Settings and LED menus"></p>
+
+**Setup** (the button in the game list's header, or Options on the controller):
+
+| Setting | What it does |
+|---|---|
+| Volume | Mute, 1–4 |
+| Scaling | 1.5x sharp, 1.5x smooth, 1x, Fit, Stretch. Remembered separately for portrait and landscape; landscape defaults to Stretch. |
+| DMG palette | Colors for original Game Boy games: GB green, Gray, Pocket, Warm, Red |
+| NES palette | Nofrendo, Composite, NES Classic, NTSC, PVM, Smooth |
+| Brightness | Screen backlight 25–100 % |
+| Show FPS | Shows "drawn / emulated" frames per second in a corner of the game screen (emulated stays at 60) |
+| Theme | Menu colors (see below) |
+| LED | The board's RGB LED (see below) |
+| Display & touch | Orientation, touch calibration and test, flip/mirror fixes, invert colors, swap red/blue |
+| Free memory | Free RAM while browsing (games get more, because the list is freed while playing) |
+| Controller (Bluetooth build) | Bluetooth on/off, pair, button layout, on-screen buttons (Auto / Always / Never), forget controllers |
+
+To reset every setting, including touch calibration, hold **BOOT** while powering on.
+
+**LED** (in Setup and in the pause menu, so you can change it mid-game):
+
+| Option | Choices |
+|---|---|
+| Mode | Off, Solid, Breathing (a slow 3-second pulse) |
+| Color | Theme (follows the menu theme), Red, Orange, Yellow, Green, Cyan, Blue, Purple, Magenta, White |
+| Brightness | 25 / 50 / 75 / 100 % |
+| During games | Same as menus, Steady, Off. The pause menu counts as a menu. |
+| Flash on save | Three green blinks when a battery save or save state is written |
+| Flash on cheat | Three yellow blinks when you switch a cheat on |
+
+### Themes
+
+<p align="center"><img src="docs/images/themes.png" width="720" alt="The four menu themes"></p>
+
+*Setup → Theme* cycles through **H@N Night** (the default, taken from the H@N logo), **Neon**, **DMG Green** and
+**Amber CRT**. Themes change the menus, the boot screen and the loading screen. Games are never affected.
+
+### Loading screen
+
+<p align="center"><img src="docs/images/loading.gif" width="480" alt="The wireframe loading screen"></p>
+
+The first time you start a game, it's copied from the SD card into the board's flash. The H@N wireframe rocks
+above the game's name and a progress bar while that happens. A 1–2 MB game takes about 5–20 seconds. The next
+launch of the same game is instant. The logo pauses for a moment about every 64 KB copied, while the chip
+erases flash and nothing can draw.
+
+---
 
 ## How it works
 
-- There is no PSRAM, so on the first launch of a ROM the emulator copies it from SD into
-  flash and memory-maps it. You'll see a progress bar, usually 5-20 s for a 1-2 MB game.
-  Launching the same ROM again starts instantly.
-- Up to 2.94 MB (Bluetooth build) or 3.31 MB (touch-only build) of a ROM goes into flash, which covers almost every GB/GBC game. Pokémon
-  Crystal is 2 MB.
-- **Bigger ROMs (4 MB, up to 8 MB)**, such as Grand Theft Auto, are split: as much as fits goes
-  to flash and the rest is read from the ROM file on the SD card in 4 KB pages while you play.
-  Expect brief pauses when the game reaches parts it hasn't used recently. The SD card runs at
-  40 MHz when it supports it (25 MHz otherwise).
-- (v2.0 tried "learned" flash layouts for big ROMs. They made games slower on real hardware,
-  so v2.0.1 switched them off; any ROM that v2.0 rearranged is copied again in plain order
-  once. The planner code is still in gb_glue.c, unused.)
-- How smooth a big ROM plays depends on free RAM. The touch-only build has about 60 KB more
-  for this than the BT build. If the BT build says "Not enough memory" for a big ROM, try the
-  touch-only build, or turn Bluetooth off in Setup → Controller and restart: Bluetooth then
-  isn't started at all, which frees its memory.
-- The screen is shown at 1.5x (240x216) with touch controls underneath. Display frames are
-  skipped automatically while the game itself keeps running at full speed (60 emulated fps).
+<p align="center"><img src="docs/images/architecture.png" width="760" alt="How the parts fit together"></p>
 
-## Boot and loading screens (v2.6.0)
+**Two cores.** The ESP32 has two processor cores.
+- **Core 1** runs the emulator, one frame at a time, and hands each finished line of the picture to a "line ring".
+  It also sends sound to the speaker through the chip's I2S unit and internal DAC (GPIO 26).
+- **Core 0** runs a display task. It takes lines from the ring, scales them to the chosen size, adds the FPS
+  counter, and sends them to the ILI9341 screen by DMA while the emulator is already working on the next frame.
+- Bluetooth also runs on core 0.
 
-Both draw the H@N logo as a 3D wireframe: the outline in `src/wire/wire_logo.h`
-(made by `tools/wire_logo.py` from DejaVu Sans Bold, 106 points) is extruded and drawn into a
-small 4-bit buffer, then pushed to the screen, so it doesn't flicker.
+If the screen can't keep up, frames are skipped. The game itself always runs at full speed.
 
-- Boot: stars fly past, the logo spins in from far away, flashes once and rocks gently while
-  "hackatnight.com" types itself. Tap or press BOOT to skip.
-- Loading game (first launch of a game, while it copies to flash): the logo rocks above the
-  game's name and a progress bar.
+**No frame buffer.** The board has only about 300 KB of RAM and no PSRAM.
+- GB/GBC lines go straight to the ring as screen colors, so Game Boy Color "hi-color" pictures come out exactly right.
+- NES lines go as 8-bit palette numbers. The ring holds a whole frame when there's room, or fewer lines when there isn't.
+- While an NES game runs, the NES core borrows the Game Boy core's unused video memory.
 
-## Menu themes and animation (v2.6.0)
+**Games run from flash.**
 
-Setup > Theme: H@N Night (default), Neon, DMG Green, Amber CRT. Themes change only the
-menus. The menus animate while idle: stars in the header, a light along its bronze edge, a
-glowing selected row, and names too long for their row scroll sideways (the selected one,
-or with touch, each cut-off name in turn).
+<p align="center"><img src="docs/images/flash-map.png" width="760" alt="Flash layout of both builds"></p>
 
-## A-Z jump (v2.7.0)
+- A game is copied once into the "game storage" area of the 4 MB flash chip. The chip maps it into memory, so
+  the emulator reads the game as if it were in RAM, with nothing copied at play time.
+- The board remembers which game is stored, so the next launch skips the copy.
+- Games bigger than game storage (some GBC games are 4–8 MB) keep their first part in flash. The rest is read
+  from the SD card in 4 KB pieces as needed, which can cause brief pauses.
 
-In folders longer than one screen. Landscape: a strip of letters under the title bar (tap a
-letter; the underlined one is where you are). Portrait: an "A-Z" button next to Setup opens a
-grid of letters. Controller: Select (Share) opens it, the d-pad picks a letter, OK goes there,
-Back cancels. Setup moved to Options (Start) on the controller. Letters with no games are dimmed.
+**Saving without stutter.** Many games use their save memory as scratch space and change it constantly.
+- The emulator watches for writes and only saves once the memory has stopped changing, meaning an in-game save
+  has finished, or at most once a minute.
+- If a game's save memory doesn't fit in RAM, 4 KB pages of it are kept in RAM and the rest is read from the
+  `.sav` file when needed, the way a cartridge would.
 
-## Board LED (v2.7.0)
+**Folders load fast.** Folders are read straight from the card's FAT file system in a single pass. Names and
+sizes come from the folder itself, without opening any game file, so even a folder of thousands of games lists
+almost at once.
 
-Setup > LED, or LED in the pause menu: mode (off, solid, breathing), color (theme or one of
-nine), brightness, what it does during games (same, steady, off), green blinks when a save or
-state is written, yellow blinks when a cheat is turned on, and (Bluetooth build) the PS4
-controller's light bar: blue, match the LED, or off. The RGB LED is on GPIO 4 / 16 / 17.
+**Code-drawn graphics.** There are no stored images in the firmware.
+- The H@N logo is 106 points of outline, extruded into 3D and drawn as a wireframe into a small 4-bit buffer
+  that's sent to the screen in one go, so it doesn't flicker.
+- The stars, the shine, the glowing selection and the scrolling names are all drawn in code.
+- Themes are seven colors each, plus three for the header.
 
-## Controls
+**The LED.** The RGB LED is on GPIO 4 (red), 16 (green) and 17 (blue) and lights when a pin is low. The chip's
+LED-dimming hardware sets each color's brightness. A small timer every 30 ms works out the breathing level and
+the save/cheat blinks, so the LED costs the games nothing.
 
-- D-pad (8-way) on the left. A and B on the right; touching the gap between them presses both.
-- SEL and START are in the middle.
-- MENU, the BOOT button, or a controller's PS / home button pauses the game. Press it
-  again (or B) to resume.
-- Every menu has a touch Back button; in the Bluetooth build it shows the controller's Back
-  symbol too (drawn PlayStation symbols: Circle = OK and Cross = Back with the "Game Boy"
-  button layout, swapped with the "Xbox" layout). With a controller connected, the header
-  also shows the OK symbol. Long menus scroll (drag, or the d-pad).
-- In the game list, swipe to scroll, tap a folder to open it and a game to launch it.
-  "Setup" opens the settings; on a PS4 controller the Share button does the same (the
-  Setup button shows a "Share" tip in the Bluetooth build).
-- Show FPS puts "drawn/emulated" frames per second in the top-left corner of the game
-  (emulated should stay at 60, or 50 for PAL NES games).
-- Hold BOOT for 1 second in the ROM list to switch to the next orientation.
-- The BT build starts in Landscape L; the touch-only build starts in Portrait.
-- With the on-screen controls hidden, tap anywhere on the screen to open the menu.
+**Slimmed Bluetooth (Bluetooth build).** The Bluepad32/BTstack Bluetooth library is trimmed to fit, which
+saves about 109 KB of flash and 32 KB of RAM:
+- PS4 controllers only, one at a time
+- a smaller receive buffer
+- no Bluetooth Low Energy
 
-The CST820 touch panel only reports one touch point. A Bluetooth controller doesn't have that limit.
+The modified files are in [`src/bt_slim`](src/bt_slim).
 
-## Bluetooth controllers (BT build)
+**The cores.**
+- **gnuboy** for GB/GBC. CPU and timing are fixed so it passes all of Blargg's `cpu_instrs` tests and `instr_timing`.
+- **nofrendo** (as optimized by retro-go) for NES.
+- Save states were tested by saving, playing and loading on a PC. Picture and sound replayed byte-for-byte
+  identically on 8 Game Boy test ROMs and 261 NES test ROMs and demos.
 
-Tested with a PS4 controller.
+**NES mappers.** Supported: 0–5, 7, 9–11, 15, 16, 18, 19, 21–25, 30, 32–34, 40–42, 46, 50, 64–66, 70, 71, 73–76, 78,
+79, 85, 87, 93, 94, 119, 160, 162, 163, 176, 185, 191–195, 206, 228, 229 and 231. That covers the large majority of
+licensed games.
+- Famicom Disk System and NSF music files aren't supported.
+- Bootleg carts (mappers 91, 187...) show "Probably a bootleg cart".
+- "(E)", "(Europe)", "(PAL)" and similar in a file name select PAL timing.
 
-Go to **Setup → Controller (Bluetooth) → Pair new controller**:
+---
 
-- **PS4:** hold SHARE + PS until the light bar flashes quickly.
-- **Other controllers** (Xbox, Switch Pro, 8BitDo...): use the controller's own pairing mode.
+## Troubleshooting
 
-Paired controllers reconnect on their own. Scanning stops while a controller is connected
-and restarts when none are.
+| Problem | Try this |
+|---|---|
+| Blank or white screen after flashing | Make sure the board really is an ESP32-2432S024C (capacitive touch, 2.4"). Other CYD boards aren't supported. |
+| Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
+| "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
+| "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
+| Touch is off | *Setup → Display & touch → Calibrate touch*. |
+| Controller won't pair | Bluetooth build only, PS4 controllers only. Hold SHARE + PS until the light bar flashes quickly, then *Pair new controller*. |
+| A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |
+| No cheats for a game | The `.cht` file name must match the game's name (case, punctuation and `( )` / `[ ]` tags are ignored). Rename the file if needed. |
+| NES game says "Mapper N isn't supported" | That cartridge chip isn't emulated yet (see the list above). |
 
-Controller mapping:
+If the board restarts on its own, the next boot tells you why (power dip, crash or freeze).
 
-- D-pad or left stick = D-pad
-- Start / Options = START, Select / Share = SELECT
-- PS / home button = pause menu
-- **Menus:** D-pad moves the highlight (hold to repeat), A or Start selects, B goes back.
-  In the ROM list, left/right jumps a page and Select opens Setup.
-- The default **Button layout** is "Game Boy" (positional): the right face button is A and the
-  bottom button is B. Switch it to "Xbox" if you want the bottom button to be A.
+---
 
-**Save memory paging:** when there isn't enough RAM for a game's whole save memory, the
-emulator keeps as many 4 KB pages in RAM as fit. The rest stays in the game's .sav file and is
-read in from the SD card when the game uses it, the way a battery-backed cartridge would. The
-pause menu then shows "(paged)" next to Save game to SD. The first time a game touches a page
-that isn't in RAM there may be a short hitch.
+## Building from source
 
-Setup shows **Free memory**, measured while you browse. The ROM list is freed during play,
-so a game gets more than that number shows. Large-save GBC games such as Pokémon Gold/Silver/Crystal need about
-64 KB free. If one won't start on the BT build, use the touch-only build. The serial monitor
-(115200 baud) prints free memory at boot and at game start.
+The [web flasher](https://hackatnight.github.io/HAN-CYD-GBC/) is all you need to play. To build it yourself:
 
-## Settings (Setup in the ROM list)
-
-- **Settings:** Volume; Scaling (1.5x sharp, 1.5x smooth, 1x, Fit, Stretch); DMG palette;
-  Brightness; Show FPS (drawn/emulated); Free memory; Controller (BT build).
-- **Display & touch:** Orientation (Portrait, Landscape R, Portrait flip, Landscape L; the
-  landscape options are BT build only), Calibrate touch, Clear calibration, Touch test,
-  Touch flip X / Y, Mirror fix, Invert colors, Swap red/blue.
-- **Controller (BT build):** Bluetooth on/off, Pair new controller, Button layout,
-  On-screen controls (Auto = hidden while a controller is connected, Always, Never),
-  Forget all controllers.
-
-Notes:
-
-- Landscape R means you turn the board clockwise; Landscape L means counter-clockwise.
-- The on-screen controls only appear in portrait.
-- Scaling is remembered separately for portrait and landscape. Landscape defaults to Stretch.
-- Scaling sizes in landscape (320x240):
-  - 1.5x: 240x216
-  - Fit: 266x240 (keeps the correct shape)
-  - Stretch: 320x240 (fills the screen)
-- Scaling sizes in portrait with the controls hidden: 1.5x and Fit are 240x216, centered;
-  Stretch is 240x320.
-- Frames are skipped automatically, so the game itself keeps running at full speed. Stretch
-  has the most pixels to send.
-
-To reset all settings, including calibration, hold **BOOT** while powering on.
-
-## Bluetooth memory slimming (BT build)
-
-`src/bt_slim/` holds modified copies of files from the Bluepad32 4.1.0 board package. They
-only compile in the BT build, and the linker uses them in place of the precompiled originals:
-
-- `uni_hid_device_slim.c`: 1 controller slot instead of 4 (saves about 17.5 KB of RAM), and
-  **PS4 controllers only**: the other controller drivers and the controller ID table are left
-  out. Other controllers fall back to the generic HID driver and may not work.
-- `btstack_port_esp32_slim.c`: an 8 KB Bluetooth receive buffer instead of about 22 KB (the
-  original size is meant for audio streaming; gamepad reports are about 80 bytes). Saves about
-  14 KB of RAM. Bluetooth audio and the LE device database are not set up.
-- `ble_off_slim.c`: no Bluetooth Low Energy. The PS4 controller uses classic Bluetooth, so
-  Bluepad32's LE scanning and GATT service and BTstack's LE security manager are replaced by
-  empty versions, which keeps the GATT/ATT/crypto code out of the build.
-
-Together the PS4-only and no-LE changes cut the app by about 109 KB of flash and 4 KB of RAM.
-
-Together they free about 32 KB of RAM. Only one controller can be connected at a time.
-
-## Troubleshooting restarts
-
-If the board restarted unexpectedly, the next boot shows why:
-
-- **"power dip (brownout)":** the supply voltage sagged, usually because of the speaker plus
-  a weak USB cable, port or hub. Try a short, good cable or a 5 V / 1 A+ adapter, or lower
-  the volume.
-- **"software crash"** or **"froze (watchdog)":** a bug. Note what you were doing.
-
-## Build from source
-
-- **Arduino IDE (verified):**
-  1. Board package for the BT build: add
+1. **Arduino IDE or arduino-cli** with:
+   - **Bluetooth build:** the *esp32_bluepad32* 4.1.0 board package. Board manager URL:
      `https://raw.githubusercontent.com/ricardoquesada/esp32-arduino-lib-builder/master/bluepad32_files/package_esp32_bluepad32_index.json`
-     as a board URL and install "esp32_bluepad32" 4.1.0.
-  2. Board package for the touch-only build: Arduino-ESP32 2.0.17.
-  3. Install LovyanGFX 1.1.16.
-  4. Choose "ESP32 Dev Module", 240 MHz, QIO 80 MHz, 4 MB. `partitions.csv` is picked up
-     automatically. For the touch-only build, copy `partitions_touch.csv` over `partitions.csv`
-     first (smaller app, more room for ROMs). The code turns Bluetooth on automatically when it's built with the
-     Bluepad32 board.
-- **PlatformIO:** `cyd2432s024c` builds the touch-only version. The `cyd2432s024c_bt` env is
-  untested.
+   - **Touch-only build:** the Arduino-ESP32 2.0.17 board package
+   - the **LovyanGFX** 1.1.16 library
+2. Board settings: *ESP32 Dev Module*, 240 MHz, QIO 80 MHz flash, 4 MB.
+   - `partitions.csv` (Bluetooth layout) is picked up automatically.
+   - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
+3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
+4. To make a single merged image like the ones in `docs/firmware`:
+   ```sh
+   esptool.py --chip esp32 merge_bin -o merged.bin --flash_mode dio --flash_freq 80m --flash_size 4MB \
+     0x1000 gbc_cyd.ino.bootloader.bin 0x8000 gbc_cyd.ino.partitions.bin 0x10000 gbc_cyd.ino.bin
+   ```
 
-Core: gnuboy (GPL v2), taken from GBCCAT / ODROID-GO with these fixes:
+Project layout:
 
-- restored proper audio mixing (22 kHz, internal DAC)
-- re-enabled sound register reads, which GBCCAT had disabled because of a crash bug
-- Blargg cpu_instrs fixes (LD HL,SP+e, ADD SP,e, DAA, POP AF)
-- HALT now waits correctly when interrupts are disabled
-- ROM bank wrap-around
-- fixed a NULL framebuffer pointer on the first frame
-- no frame buffer: finished lines go to the display through a 32-line RGB565 ring, converted with the palette in effect at that line, so GBC hi-color screens are exact (saves about 13 KB)
-- work RAM allocated per game in 4 KB banks; cartridge RAM in 4 KB pages, paged from SD when RAM is short
+| Path | What's there |
+|---|---|
+| `src/main.cpp` | Menus, display, sound, input, saves, cheats, themes, LED |
+| `src/gnuboy/` | Game Boy / Game Boy Color core, plus glue (`gb_glue.c`) |
+| `src/nofrendo/` | NES core, plus glue (`nes_glue.c`) |
+| `src/wire/` | The wireframe H@N outline (generated by `tools/wire_logo.py`) |
+| `src/bt_slim/` | Slimmed Bluetooth library files (Bluetooth build) |
+| `docs/` | Web flasher page, firmware images, cheat pack, README images |
+| `tools/` | Host tests, logo and cheat-pack generators |
 
-It passes all 11 Blargg cpu_instrs tests and instr_timing.
+---
 
-## NES (v2.2.0)
+## Credits and licenses
 
-Core: nofrendo, as optimized by retro-go (LGPL v2, `src/nofrendo`), with these changes:
+- **gnuboy** (GB/GBC core): GNU GPL v2. Via GBCCAT / ODROID-GO, with fixes listed in the source.
+- **nofrendo** (NES core), as optimized by **retro-go**: GNU (L)GPL v2. See `src/nofrendo/COPYING`.
+- **Bluepad32** and **BTstack** (Bluetooth build): the BTstack files in `src/bt_slim` keep BlueKitchen's license,
+  which allows personal, non-commercial use only.
+- **LovyanGFX** (display driver): FreeBSD license.
+- **Cheat pack**: adapted from libretro-database, CC BY-SA 4.0. See `LICENSE-CHEATS.txt` inside the zip.
+- **ESP Web Tools** (web flasher): Apache 2.0, loaded from unpkg.
+- Everything else © H@N ([hackatnight.com](https://hackatnight.com)). Because the emulator cores are GPL v2, the
+  firmware as a whole is distributed under the **GNU GPL v2** (see [LICENSE](LICENSE)).
 
-- no frame buffer: each line goes to the display through a ring of palette indices (a whole
-  224-line frame, 57 KB, when it fits; smaller rings otherwise), lines 8-231 shown
-- ROM data is read straight from the memory-mapped flash copy (nothing copied to RAM)
-- the core's own memory (work RAM, name tables, sound, save RAM) is borrowed from the Game Boy
-  core's idle video memory while an NES game runs, and given back afterwards
-- CHR-RAM only for games that need it (saves 8 KB for most games)
-- fixed: zero-page pointers at $FF now wrap to $00 (Blargg instr_test `(z,X)` / `(z),Y`)
-- the 4,900-game fix-up database is left out to save 49 KB of flash; games use their iNES
-  headers, and "(E)", "(Europe)", "(A)", "(Australia)" or "(PAL)" in the file name selects PAL timing
-- in the touch-only build the 6502 core runs from IRAM; the BT build has no IRAM left for it
-
-Mappers 0-5, 7, 9-11, 15, 16, 18, 19, 21-25, 30, 32-34, 40-42, 46, 50, 64-66, 70, 71, 73-76, 78,
-79, 85, 87, 93, 94, 119, 160, 162, 163, 176, 185, 191-195, 206, 228, 229 and 231 are supported
-(this covers the vast majority of licensed games). Famicom Disk System games are not (mapper
-20 and the NSF music mapper 31 were removed in v2.4.0).
-Known nofrendo limits: MMC3 scanline IRQ timing is approximate, and a few demos that rely
-on exact mid-line timing don't draw.
-
-A game on an unsupported mapper shows "Mapper N isn't supported" with "Probably a bootleg cart"
-(unlicensed carts such as the NES Street Fighter II/III ports use their own chips: 91, 187, ...)
-or "Not supported yet" for the few licensed games on chips nofrendo lacks (e.g. 69: Batman:
-Return of the Joker, Gimmick!).
-
-NES has no 1.5x mode (256 pixels is already wider than the portrait screen), so the
-1.5x settings show the game in Fit. Setup and the pause menu have an "NES palette" choice.
+No games are included. Use only game files you have the right to use.
 
 ## Roadmap
 
-- Demoscene-style menus (copper-bar header, raster-bar highlight, sine scroller, one bitmap
-  font): mock-up GIF first.
-- Cheats: on-screen code entry, Game Genie (ROM patch) codes.
-- NES bootleg mappers, if flash allows: 91 (Street Fighter III and others) and 187
-  (Street Fighter II); more as they come up. The JY Company family (90/209/211) used by many
-  bootleg fighting games is a bigger job.
-- UI customization (e.g. the H@N logo faded behind loading screens): about 10-15 KB of flash
-  per full-screen image, no RAM while playing. Postponed until the emulation side is settled.
+- Game Genie codes and on-screen cheat entry
+- NES bootleg mappers 91 and 187 (Street Fighter II/III ports), if flash allows
+- More themes and menu effects

@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.7.0"
+#define APP_VERSION "2.7.1"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -188,7 +188,6 @@ struct Settings {
   uint8_t ledGame = 1;     // while playing: 0 = same as menus, 1 = steady, 2 = off
   uint8_t ledFlashSave = 1;
   uint8_t ledFlashCheat = 1;
-  uint8_t padLight = 0;    // PS4 light bar: 0 = blue, 1 = match the LED, 2 = off
 };
 static Settings cfg;
 static Preferences prefs;
@@ -224,7 +223,7 @@ static void loadSettings() {
   cfg.ledGame = prefs.getUChar("ledg", cfg.ledGame);
   cfg.ledFlashSave = prefs.getUChar("ledfs", cfg.ledFlashSave);
   cfg.ledFlashCheat = prefs.getUChar("ledfc", cfg.ledFlashCheat);
-  cfg.padLight = prefs.getUChar("padl", cfg.padLight);
+
   prefs.end();
 }
 
@@ -259,7 +258,7 @@ static void saveSettings() {
   prefs.putUChar("ledg", cfg.ledGame);
   prefs.putUChar("ledfs", cfg.ledFlashSave);
   prefs.putUChar("ledfc", cfg.ledFlashCheat);
-  prefs.putUChar("padl", cfg.padLight);
+
   prefs.end();
 }
 
@@ -325,11 +324,10 @@ static void btUpdateScanning() {
   BP32.enableNewBluetoothConnections(want);
 }
 
-static void padLightApply();
 static void onBtConnected(ControllerPtr c) {
   for (auto &slot : btCtl) if (!slot) { slot = c; break; }
   Serial.printf("BT controller connected: %s\n", c->getModelName().c_str());
-  padLightApply();
+  c->setColorLED(40, 80, 255);
   btUpdateScanning();
 }
 
@@ -337,14 +335,6 @@ static void onBtDisconnected(ControllerPtr c) {
   for (auto &slot : btCtl) if (slot == c) slot = nullptr;
   Serial.println("BT controller disconnected");
   btUpdateScanning();
-}
-
-// PS4 light bar: blue, the board LED's color, or off
-static uint32_t ledBaseColor();
-static void padLightApply() {
-  uint32_t c = cfg.padLight == 1 ? ledBaseColor() : cfg.padLight == 2 ? 0 : 0x2850FF;
-  for (auto ctl : btCtl)
-    if (ctl && ctl->isConnected()) ctl->setColorLED((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
 }
 
 static void btInit() {
@@ -414,7 +404,6 @@ static inline void btPoll() {}
 static uint8_t btReadPad(bool *system) { if (system) *system = false; return 0; }
 static String btStatus() { return String(); }
 static void btForgetAll() {}
-static void padLightApply() {}
 #endif
 
 // Controller menu navigation: edge-triggered events with auto-repeat on the d-pad.
@@ -587,7 +576,6 @@ static const LedColor LED_COLORS[] = {
 #define NUM_LED_COLORS (int)(sizeof LED_COLORS / sizeof LED_COLORS[0])
 static const char *const LED_MODES[] = { "Off", "Solid", "Breathing" };
 static const char *const LED_GAME[] = { "Same as menus", "Steady", "Off" };
-static const char *const PAD_LIGHT[] = { "Blue", "Match LED", "Off" };
 enum { LED_FLASH_NONE, LED_FLASH_SAVE, LED_FLASH_CHEAT };
 static volatile bool ledInGame = false;
 static volatile uint8_t ledFlashKind = LED_FLASH_NONE;
@@ -2516,7 +2504,7 @@ static void controllerMenu() {
   }
 }
 
-// Board LED (and the PS4 light bar). Opened from Setup and from the pause menu.
+// Board LED. Opened from Setup and from the pause menu.
 static void ledMenu() {
   while (true) {
     std::vector<MenuItem> it = {
@@ -2526,9 +2514,6 @@ static void ledMenu() {
       { "During games", LED_GAME[cfg.ledGame % 3] },
       { "Flash on save", cfg.ledFlashSave ? "On" : "Off" },
       { "Flash on cheat", cfg.ledFlashCheat ? "On" : "Off" },
-#if HAVE_BT
-      { "Controller light", PAD_LIGHT[cfg.padLight % 3] },
-#endif
     };
     static int selLed = -1;
     int i = runList("LED", "Back", it, &selLed);
@@ -2539,10 +2524,8 @@ static void ledMenu() {
       case 3: cfg.ledGame = (cfg.ledGame + 1) % 3; break;
       case 4: cfg.ledFlashSave ^= 1; if (cfg.ledFlashSave) ledFlash(LED_FLASH_SAVE); break;   // shows it once
       case 5: cfg.ledFlashCheat ^= 1; if (cfg.ledFlashCheat) ledFlash(LED_FLASH_CHEAT); break;
-      case 6: cfg.padLight = (cfg.padLight + 1) % 3; break;
       default: saveSettings(); return;
     }
-    padLightApply();
     saveSettings();
   }
 }
@@ -2576,7 +2559,7 @@ static void settingsMenu() {
       case 3: cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES; break;
       case 4: cfg.brightness = cfg.brightness >= 255 ? 64 : min(255, cfg.brightness + 64); break;
       case 5: cfg.showFps ^= 1; break;
-      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); padLightApply(); break;
+      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
       case 7: ledMenu(); break;
       case 8: displayTouchMenu(); break;
       case 10: controllerMenu(); break;
