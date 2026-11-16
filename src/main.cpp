@@ -245,10 +245,15 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.2"
+#define APP_VERSION "2.19.3"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
+// Sound waiting to be played, in 128-sample buffers. The emulator can be held up longer
+// than one frame - a battery-RAM autosave, a bank read from the SD card - and anything
+// longer than this much sound runs the speaker dry and is heard as a stutter. 16 buffers
+// is 93 ms and costs 4 KB of RAM more than the 8 (46 ms) used before.
+#define AUDIO_DMA_BUFS 16
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
 #define NES_FRAME_US     16639 // NES NTSC: 60.1 Hz
 #define NES_FRAME_US_PAL 20007 // NES PAL: 50 Hz
@@ -1650,7 +1655,7 @@ static void audioInit() {
   c.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
   c.communication_format = I2S_COMM_FORMAT_STAND_MSB;
   c.intr_alloc_flags = 0;
-  c.dma_buf_count = 8;            // 46 ms: covers the emulator waiting on the display
+  c.dma_buf_count = AUDIO_DMA_BUFS;
   c.dma_buf_len = 128;
   c.use_apll = false;
   c.tx_desc_auto_clear = false;   // on underrun repeat the last (midpoint) buffer, never 0 V
@@ -1660,7 +1665,7 @@ static void audioInit() {
   // one gentle ramp 0 V -> midpoint at boot (~0.4 s), then park there
   dacLast = 0;
   audioRamp(0x80, AUDIO_RATE * 4 / 10);
-  audioWriteLevel(0x80, 8 * 128 + 128);
+  audioWriteLevel(0x80, AUDIO_DMA_BUFS * 128 + 128);
   i2s_stop(I2S_NUM_0);
   audioRunning = false;
 }
@@ -1673,7 +1678,7 @@ static void audioStart() {
 static void audioStop() {
   if (!audioRunning) return;
   audioRamp(0x80, 256);                 // glide back to the midpoint
-  audioWriteLevel(0x80, 8 * 128 + 128); // flush the DMA ring with midpoint samples
+  audioWriteLevel(0x80, AUDIO_DMA_BUFS * 128 + 128); // flush the DMA ring with midpoint samples
   i2s_stop(I2S_NUM_0);                  // DAC holds the midpoint while stopped
   audioRunning = false;
 }
@@ -1785,7 +1790,7 @@ static void musicTask(void *) {
     i2s_write(I2S_NUM_0, out, sizeof out, &w, portMAX_DELAY);
     dacLast = (uint8_t)v8;
     if (!musicWant && fade <= 0) {   // faded out: park at the midpoint and stop
-      audioWriteLevel(0x80, 8 * 128 + 128);
+      audioWriteLevel(0x80, AUDIO_DMA_BUFS * 128 + 128);
       i2s_stop(I2S_NUM_0);
       audioRunning = false;
       musicIdle = true;

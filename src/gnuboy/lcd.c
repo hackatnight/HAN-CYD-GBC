@@ -317,6 +317,17 @@ static void IRAM_ATTR wnd_scan()
 
 inline static void blendcpy(byte *dest, byte *src, byte b, int cnt)
 {
+	/* A whole tile at once: eight pixels are two 32-bit words, and the palette number
+	 * goes into every byte of the mask. Same word trick the DMG path above uses. */
+	if (cnt == 8)
+	{
+		const un32 m = 0x01010101u * b;
+		un32 *d = (un32 *)dest;
+		const un32 *s = (const un32 *)src;
+		d[0] = s[0] | m;
+		d[1] = s[1] | m;
+		return;
+	}
 	while (cnt--) *(dest++) = *(src++) | b;
 }
 
@@ -705,13 +716,17 @@ if (fb.enabled)
 				gb_pal_frame++;
 			}
 			else if (pal_snap_ver != pal_ver)
-			{   /* colors changed since the last line: log which ones */
-				int i;
+			{   /* colors changed since the last line: log which ones. Never wait for the
+				 * display here: it may itself be waiting for this line, which would lock
+				 * the two together. If the log is full the rest of the changes are tried
+				 * again on the next line, so a frame that rewrites a great many colors
+				 * shows some of them a line or two late instead of freezing. */
+				int i, full = 0;
 				for (i = 0; i < 64; i++)
 					if (PAL2[i] != pal_shadow[i])
 					{
 						gb_pal_change_t *e;
-						while (gb_pal_w - gb_pal_r >= GB_PAL_LOG) { }
+						if (gb_pal_w - gb_pal_r >= GB_PAL_LOG) { full = 1; break; }
 						e = &gb_pal_log[gb_pal_w % GB_PAL_LOG];
 						e->line = (byte)L;
 						e->index = (byte)i;
@@ -719,7 +734,7 @@ if (fb.enabled)
 						__sync_synchronize();
 						gb_pal_w = gb_pal_w + 1;
 					}
-				pal_snap_ver = pal_ver;
+				if (!full) pal_snap_ver = pal_ver;
 			}
 			while (L - gb_lines_need >= gb_ring_lines) { }
 			memcpy(gb_ring[L % gb_ring_lines], BUF, 160);

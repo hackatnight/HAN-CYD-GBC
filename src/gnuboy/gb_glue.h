@@ -13,7 +13,7 @@ void gb_frame_end();
 /* line ring (lcd.c) */
 #define GB_RING 32
 #ifndef GB_PAL_LOG
-#define GB_PAL_LOG 1024
+#define GB_PAL_LOG 2048
 typedef struct { unsigned char line, index; unsigned short color; } gb_pal_change_t;
 extern uint8_t (*gb_ring)[160];      /* lines of 1-byte color numbers */
 extern gb_pal_change_t *gb_pal_log;

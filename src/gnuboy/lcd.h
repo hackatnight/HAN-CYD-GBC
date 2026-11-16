@@ -62,7 +62,7 @@ void lcd_set_dmg_palette(const int *p);
  * display still needs (the emulator waits rather than overwrite it). */
 #define GB_RING 32
 #ifndef GB_PAL_LOG
-#define GB_PAL_LOG 1024
+#define GB_PAL_LOG 2048
 typedef struct { unsigned char line, index; unsigned short color; } gb_pal_change_t;
 extern byte (*gb_ring)[160];      /* lines of 1-byte color numbers */
 extern gb_pal_change_t *gb_pal_log;
