@@ -12,10 +12,13 @@ void gb_set_framebuffer(uint8_t *buf, int render);
 void gb_frame_end();
 /* line ring (lcd.c) */
 #define GB_RING 32
-#define GB_PAL_POOL 32
-extern uint8_t (*gb_ring)[160];      /* lines of palette indexes */
-extern uint8_t *gb_ring_pal;         /* per line: snapshot in gb_pal_pool */
-extern uint16_t (*gb_pal_pool)[64];
+#ifndef GB_PAL_LOG
+#define GB_PAL_LOG 1024
+typedef struct { unsigned char line, index; unsigned short color; } gb_pal_change_t;
+extern uint8_t (*gb_ring)[160];      /* lines of 1-byte color numbers */
+extern gb_pal_change_t *gb_pal_log;
+void gb_ring_line_rgb(int line, uint16_t *out);   /* display side: that line as RGB565 */
+#endif
 extern int gb_ring_lines;
 /* (re)allocate the line ring; 0 = ok (keeps the old ring on failure) */
 int gb_ring_alloc(int lines);

@@ -43,7 +43,7 @@ and a one-click web flasher.
 
 | Board | Hardware | Display | Touch | PS4 controller | Other controllers | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ |
+| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟡 | ❌ | ✅ | ✅ |
 | **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
@@ -597,11 +597,14 @@ erases flash and nothing can draw.
 
 If the screen can't keep up, frames are skipped. The game itself always runs at full speed.
 
-Game Boy lines sit in the ring as 1-byte color numbers, each with a snapshot of the palette that was in effect
-when the line was drawn (so games that change colors partway down the screen stay exact). A whole frame is 23 KB
-that way instead of 46 KB as RGB565, which matters on Game Boy Color games: they need 24 KB more work RAM, and
-when a whole frame doesn't fit, the emulator has to wait for the screen. `tools/hosttest/ringcheck.c` checks the
-ring against the core's own output, pixel for pixel.
+Game Boy lines sit in the ring as 1-byte color numbers, so a whole frame is 23 KB instead of 46 KB as RGB565.
+That matters on Game Boy Color games: they need 24 KB more work RAM, and when a whole frame doesn't fit, the
+emulator has to wait for the screen. To keep games that change colors partway down the screen exact, the emulator
+writes each color change (line, slot, color) to a log as it draws, and the display replays the log as it reaches
+each line, starting from the colors in effect at line 0. The log holds 1024 changes, far more than a frame uses
+(a raster effect typically changes one color per line), so the emulator never waits on it.
+`tools/hosttest/ringcheck.c` checks the ring against the core's own output, pixel for pixel, with a deliberately
+slow and jittery display thread.
 
 **No frame buffer.** The board has only about 300 KB of RAM and no PSRAM.
 - GB/GBC lines go straight to the ring as screen colors, so Game Boy Color "hi-color" pictures come out exactly right.

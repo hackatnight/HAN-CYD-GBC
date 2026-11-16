@@ -70,14 +70,17 @@ byte *vdest;
 
 /* line ring shared with the display task (see lcd.h) */
 byte (*gb_ring)[160];   /* gb_ring_lines lines of palette indexes (gb_ring_alloc) */
-byte *gb_ring_pal;       /* per ring line: which palette snapshot it uses */
-/* Palette snapshots: a line is stored as 1-byte color numbers plus the snapshot of the
- * 64 colors in effect when it was drawn, so raster palette changes stay exact while the
- * ring needs half the RAM of RGB565 lines. A new snapshot is taken only when a color
- * changed since the last one. */
-un16 (*gb_pal_pool)[64];   /* GB_PAL_POOL snapshots, allocated with the ring */
-static int pal_last_line[GB_PAL_POOL];
-static int pal_cur, pal_used;
+/* A line is stored as 1-byte color numbers. The display turns them into RGB565 with its
+ * own copy of the 64 colors: it starts each frame from gb_pal_base (the colors at line 0)
+ * and, before each line, applies the color changes the game made up to that line, which
+ * the emulator logs here. So raster palette effects stay exact, a frame needs half the
+ * RAM of RGB565 lines, and the emulator only waits for the display if the log fills up
+ * (more than GB_PAL_LOG changes ahead of the display). */
+un16 gb_pal_base[64];
+gb_pal_change_t *gb_pal_log;            /* GB_PAL_LOG entries, allocated with the ring */
+volatile unsigned gb_pal_w, gb_pal_r;   /* written by the emulator / read by the display */
+volatile unsigned gb_pal_frame;         /* counts drawn frames */
+static un16 pal_shadow[64];
 static unsigned pal_ver = 1, pal_snap_ver = 0;
 int gb_ring_lines = GB_RING;
 volatile int gb_lines_out = 144;
@@ -740,31 +743,34 @@ if (fb.enabled)
 			 * converted to RGB565 with the palette in effect right now, so GBC
 			 * "hi-color" screens that rewrite palettes every few lines stay exact.
 			 * Wait if the display is GB_RING lines behind. */
-			int r;
 			if (L == 0)
 			{   /* a drawn frame starts once the display has finished the last one */
-				for (r = 0; r < GB_PAL_POOL; r++) pal_last_line[r] = -1;
-				pal_used = 0;
-				pal_snap_ver = pal_ver - 1;
+				memcpy(gb_pal_base, PAL2, sizeof gb_pal_base);
+				memcpy(pal_shadow, PAL2, sizeof pal_shadow);
+				gb_pal_w = gb_pal_r = 0;
+				pal_snap_ver = pal_ver;
+				__sync_synchronize();
+				gb_pal_frame++;
 			}
-			if (pal_snap_ver != pal_ver)
-			{
-				int s;
-				if (pal_used < GB_PAL_POOL) s = pal_used++;
-				else
-				{   /* all snapshots in use: reuse the oldest once the display is past it */
-					s = (pal_cur + 1) % GB_PAL_POOL;
-					while (pal_last_line[s] >= gb_lines_need) { }
-				}
-				memcpy(gb_pal_pool[s], PAL2, sizeof gb_pal_pool[s]);
-				pal_cur = s;
+			else if (pal_snap_ver != pal_ver)
+			{   /* colors changed since the last line: log which ones */
+				int i;
+				for (i = 0; i < 64; i++)
+					if (PAL2[i] != pal_shadow[i])
+					{
+						gb_pal_change_t *e;
+						while (gb_pal_w - gb_pal_r >= GB_PAL_LOG) { }
+						e = &gb_pal_log[gb_pal_w % GB_PAL_LOG];
+						e->line = (byte)L;
+						e->index = (byte)i;
+						e->color = pal_shadow[i] = PAL2[i];
+						__sync_synchronize();
+						gb_pal_w = gb_pal_w + 1;
+					}
 				pal_snap_ver = pal_ver;
 			}
-			pal_last_line[pal_cur] = L;
 			while (L - gb_lines_need >= gb_ring_lines) { }
-			r = L % gb_ring_lines;
-			memcpy(gb_ring[r], BUF, 160);
-			gb_ring_pal[r] = (byte)pal_cur;
+			memcpy(gb_ring[L % gb_ring_lines], BUF, 160);
 			__sync_synchronize();
 			gb_lines_out = L + 1;
 			if (gb_line_hook)
@@ -883,4 +889,29 @@ void lcd_reset()
 	lcd_begin();
 	vram_dirty();
 	pal_dirty();
+}
+
+
+/* Display side: line L of the current frame as RGB565 (call for increasing L, after
+ * gb_lines_out > L). Keeps the display's own copy of the colors up to date from the log. */
+#undef L
+void gb_ring_line_rgb(int line, un16 *out)
+{
+	static un16 pal[64];
+	static unsigned frame = ~0u;
+	const byte *src = gb_ring[line % gb_ring_lines];
+	int x;
+	if (frame != gb_pal_frame)
+	{
+		frame = gb_pal_frame;
+		memcpy(pal, gb_pal_base, sizeof pal);
+	}
+	while (gb_pal_r != gb_pal_w)
+	{
+		const gb_pal_change_t *e = &gb_pal_log[gb_pal_r % GB_PAL_LOG];
+		if (e->line > line) break;
+		pal[e->index & 63] = e->color;
+		gb_pal_r = gb_pal_r + 1;
+	}
+	for (x = 0; x < 160; x++) out[x] = pal[src[x]];
 }

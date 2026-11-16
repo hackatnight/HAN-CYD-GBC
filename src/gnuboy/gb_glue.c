@@ -468,23 +468,18 @@ void *gb_scratch(size_t *size)
 void gb_ring_free(void)
 {
 	free(gb_ring);
-	free(gb_ring_pal);
-	free(gb_pal_pool);
+	free(gb_pal_log);
 	gb_ring = 0;
-	gb_ring_pal = 0;
-	gb_pal_pool = 0;
+	gb_pal_log = 0;
 	gb_ring_lines = 0;
 }
 
 int gb_ring_alloc(int lines)
 {
 	byte (*r)[160];
-	byte *p;
 	if (gb_ring && lines == gb_ring_lines) return 0;
 	free(gb_ring);
-	free(gb_ring_pal);
 	gb_ring = 0;
-	gb_ring_pal = 0;
 	r = (byte (*)[160])malloc((size_t)lines * 160);
 	if (!r)
 	{
@@ -492,13 +487,10 @@ int gb_ring_alloc(int lines)
 		r = (byte (*)[160])malloc((size_t)lines * 160);
 		if (!r) return -1;
 	}
-	p = (byte *)calloc(lines, 1);
-	if (!p) { free(r); return -1; }
-	if (!gb_pal_pool)
-		gb_pal_pool = (un16 (*)[64])calloc(GB_PAL_POOL, sizeof *gb_pal_pool);
-	if (!gb_pal_pool) { free(r); free(p); return -1; }
+	if (!gb_pal_log)
+		gb_pal_log = (gb_pal_change_t *)calloc(GB_PAL_LOG, sizeof *gb_pal_log);
+	if (!gb_pal_log) { free(r); return -1; }
 	gb_ring = r;
-	gb_ring_pal = p;
 	gb_ring_lines = lines;
 	return 0;
 }

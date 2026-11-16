@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.0"
+#define APP_VERSION "2.19.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1916,10 +1916,7 @@ static inline void expandLine(int line, uint16_t *out) {
     const uint8_t *s = nes_ring + (line % nes_ring_lines) * NES_W;
     for (int x = 0; x < NES_W; x++) out[x] = nes_pal565[s[x]];
   } else {
-    int r = line % gb_ring_lines;              // 1-byte colors + that line's palette snapshot
-    const uint8_t *s = gb_ring[r];
-    const uint16_t *p = gb_pal_pool[gb_ring_pal[r]];
-    for (int x = 0; x < 160; x++) out[x] = p[s[x]];
+    gb_ring_line_rgb(line, out);               // 1-byte colors -> RGB565 with that line's palette
   }
 }
 

@@ -61,10 +61,13 @@ void lcd_set_dmg_palette(const int *p);
  * gb_lines_out = lines finished in this frame, gb_lines_need = oldest line the
  * display still needs (the emulator waits rather than overwrite it). */
 #define GB_RING 32
-#define GB_PAL_POOL 32
-extern byte (*gb_ring)[160];
-extern byte *gb_ring_pal;
-extern un16 (*gb_pal_pool)[64];
+#ifndef GB_PAL_LOG
+#define GB_PAL_LOG 1024
+typedef struct { unsigned char line, index; unsigned short color; } gb_pal_change_t;
+extern byte (*gb_ring)[160];      /* lines of 1-byte color numbers */
+extern gb_pal_change_t *gb_pal_log;
+void gb_ring_line_rgb(int line, un16 *out);   /* display side: that line as RGB565 */
+#endif
 extern int gb_ring_lines;
 extern volatile int gb_lines_out, gb_lines_need;
 extern void (*gb_line_hook)(int line, const un16 *pixels);

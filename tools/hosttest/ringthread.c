@@ -19,7 +19,7 @@ static void *display(void *arg){
     frameReady=0;
     for(int L=0;L<144;L++){
       while(gb_lines_out<=L) { }                 /* wait for the line */
-      { int r=L % gb_ring_lines; for(int x=0;x<160;x++) shown[L*160+x]=gb_pal_pool[gb_ring_pal[r]][gb_ring[r][x]]; }
+      gb_ring_line_rgb(L, &shown[L*160]);
       gb_lines_need=L+1;                          /* release it */
       if(rand_r(&seed)%7==0) usleep(rand_r(&seed)%300);   /* slow, jittery display */
     }

@@ -24,8 +24,7 @@ static void *display(void *arg){
     frameReady=0;
     for(int L=0;L<144;L++){
       while(gb_lines_out<=L) { }
-      int r=L % gb_ring_lines;
-      for(int x=0;x<160;x++) shown[L*160+x]=gb_pal_pool[gb_ring_pal[r]][gb_ring[r][x]];
+      gb_ring_line_rgb(L, &shown[L*160]);
       gb_lines_need=L+1;
       if(rand_r(&seed)%5==0) usleep(rand_r(&seed)%200);
     }
