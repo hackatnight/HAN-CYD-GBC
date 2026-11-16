@@ -66,7 +66,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.6.0"
+#define APP_VERSION "2.7.0"
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
 #define FRAME_US    16743      // Game Boy: 59.73 Hz
@@ -181,6 +181,14 @@ struct Settings {
   uint8_t brightness = 255;
   uint8_t nesPalette = 0;  // see NES_PALETTE_NAMES
   uint8_t theme = 0;       // menu colors, see THEMES
+  // board RGB LED
+  uint8_t ledMode = 2;     // 0 = off, 1 = solid, 2 = breathing
+  uint8_t ledColor = 0;    // see LED_COLORS (0 = theme)
+  uint8_t ledBright = 1;   // 0..3 = 25 / 50 / 75 / 100 %
+  uint8_t ledGame = 1;     // while playing: 0 = same as menus, 1 = steady, 2 = off
+  uint8_t ledFlashSave = 1;
+  uint8_t ledFlashCheat = 1;
+  uint8_t padLight = 0;    // PS4 light bar: 0 = blue, 1 = match the LED, 2 = off
 };
 static Settings cfg;
 static Preferences prefs;
@@ -210,6 +218,13 @@ static void loadSettings() {
   cfg.brightness = prefs.getUChar("bri", cfg.brightness);
   cfg.nesPalette = prefs.getUChar("npal", cfg.nesPalette) % NES_NUM_PALETTES;
   cfg.theme = prefs.getUChar("thm", cfg.theme);
+  cfg.ledMode = prefs.getUChar("ledm", cfg.ledMode);
+  cfg.ledColor = prefs.getUChar("ledc", cfg.ledColor);
+  cfg.ledBright = prefs.getUChar("ledb", cfg.ledBright);
+  cfg.ledGame = prefs.getUChar("ledg", cfg.ledGame);
+  cfg.ledFlashSave = prefs.getUChar("ledfs", cfg.ledFlashSave);
+  cfg.ledFlashCheat = prefs.getUChar("ledfc", cfg.ledFlashCheat);
+  cfg.padLight = prefs.getUChar("padl", cfg.padLight);
   prefs.end();
 }
 
@@ -238,6 +253,13 @@ static void saveSettings() {
   prefs.putUChar("bri", cfg.brightness);
   prefs.putUChar("npal", cfg.nesPalette);
   prefs.putUChar("thm", cfg.theme);
+  prefs.putUChar("ledm", cfg.ledMode);
+  prefs.putUChar("ledc", cfg.ledColor);
+  prefs.putUChar("ledb", cfg.ledBright);
+  prefs.putUChar("ledg", cfg.ledGame);
+  prefs.putUChar("ledfs", cfg.ledFlashSave);
+  prefs.putUChar("ledfc", cfg.ledFlashCheat);
+  prefs.putUChar("padl", cfg.padLight);
   prefs.end();
 }
 
@@ -303,10 +325,11 @@ static void btUpdateScanning() {
   BP32.enableNewBluetoothConnections(want);
 }
 
+static void padLightApply();
 static void onBtConnected(ControllerPtr c) {
   for (auto &slot : btCtl) if (!slot) { slot = c; break; }
   Serial.printf("BT controller connected: %s\n", c->getModelName().c_str());
-  c->setColorLED(40, 80, 255);
+  padLightApply();
   btUpdateScanning();
 }
 
@@ -314,6 +337,14 @@ static void onBtDisconnected(ControllerPtr c) {
   for (auto &slot : btCtl) if (slot == c) slot = nullptr;
   Serial.println("BT controller disconnected");
   btUpdateScanning();
+}
+
+// PS4 light bar: blue, the board LED's color, or off
+static uint32_t ledBaseColor();
+static void padLightApply() {
+  uint32_t c = cfg.padLight == 1 ? ledBaseColor() : cfg.padLight == 2 ? 0 : 0x2850FF;
+  for (auto ctl : btCtl)
+    if (ctl && ctl->isConnected()) ctl->setColorLED((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
 }
 
 static void btInit() {
@@ -383,12 +414,14 @@ static inline void btPoll() {}
 static uint8_t btReadPad(bool *system) { if (system) *system = false; return 0; }
 static String btStatus() { return String(); }
 static void btForgetAll() {}
+static void padLightApply() {}
 #endif
 
 // Controller menu navigation: edge-triggered events with auto-repeat on the d-pad.
 enum NavEvent { NAV_NONE, NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT, NAV_OK, NAV_BACK, NAV_SYS, NAV_SELECT };
 
 static uint32_t navRepeatAt = 0;
+static bool navFromStart = false;   // the last NAV_OK came from Start (Options), not A
 
 static int btNav() {
   static uint8_t last = 0xFF;   // 0xFF: ignore whatever is held when a menu opens
@@ -404,7 +437,7 @@ static int btNav() {
   else if (pressed & GBP_DOWN) ev = NAV_DOWN;
   else if (pressed & GBP_LEFT) ev = NAV_LEFT;
   else if (pressed & GBP_RIGHT) ev = NAV_RIGHT;
-  else if (pressed & (GBP_A | GBP_START)) ev = NAV_OK;
+  else if (pressed & (GBP_A | GBP_START)) { ev = NAV_OK; navFromStart = !(pressed & GBP_A); }
   else if (pressed & GBP_B) ev = NAV_BACK;
   else if (pressed & GBP_SELECT) ev = NAV_SELECT;
   uint32_t now = millis();
@@ -536,6 +569,106 @@ static void applyTheme() {
   const ThemeDef &t = theme();
   tc = { hex565(t.bg), hex565(t.panel), hex565(t.hilite), hex565(t.accent), hex565(t.bronze), hex565(t.text), hex565(t.dim) };
 }
+// ----------------------------------------------------------------------------
+// Board RGB LED (GPIO 4 red, 16 green, 17 blue; on when the pin is low). The LEDC
+// hardware dims it; a 30 ms timer runs the breathing and the flashes, so it costs the
+// games nothing.
+// ----------------------------------------------------------------------------
+#include <driver/ledc.h>
+#include <esp_timer.h>
+#define PIN_LED_R 4
+#define PIN_LED_G 16
+#define PIN_LED_B 17
+struct LedColor { const char *name; uint32_t rgb; };
+static const LedColor LED_COLORS[] = {
+  { "Theme", 0 }, { "Red", 0xFF0000 }, { "Orange", 0xFF5000 }, { "Yellow", 0xFFB000 }, { "Green", 0x00FF20 },
+  { "Cyan", 0x00D0FF }, { "Blue", 0x0030FF }, { "Purple", 0x8000FF }, { "Magenta", 0xFF00A0 }, { "White", 0xFFFFFF },
+};
+#define NUM_LED_COLORS (int)(sizeof LED_COLORS / sizeof LED_COLORS[0])
+static const char *const LED_MODES[] = { "Off", "Solid", "Breathing" };
+static const char *const LED_GAME[] = { "Same as menus", "Steady", "Off" };
+static const char *const PAD_LIGHT[] = { "Blue", "Match LED", "Off" };
+enum { LED_FLASH_NONE, LED_FLASH_SAVE, LED_FLASH_CHEAT };
+static volatile bool ledInGame = false;
+static volatile uint8_t ledFlashKind = LED_FLASH_NONE;
+static volatile uint32_t ledFlashAt = 0;
+static bool ledReady = false;
+
+static uint32_t ledBaseColor() {
+  uint32_t c = LED_COLORS[cfg.ledColor % NUM_LED_COLORS].rgb;
+  return cfg.ledColor % NUM_LED_COLORS ? c : theme().accent;
+}
+static void ledWrite(uint32_t rgb, int level) {   // level 0..255
+  static uint32_t last = 0xFFFFFFFF;
+  int b = (cfg.ledBright % 4 + 1) * 64;            // 25..100 %
+  uint32_t key = (rgb ^ (level << 24)) + b;
+  if (key == last) return;
+  last = key;
+  const uint8_t ch[3] = { (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb };
+  for (int i = 0; i < 3; i++) {
+    uint32_t v = ch[i] * level / 255 * b / 256;
+    v = v * v / 255;                               // eyes see brightness roughly squared
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)i, v);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)i);
+  }
+}
+static void ledTimer(void *) {
+  uint32_t now = millis();
+  if (ledFlashKind != LED_FLASH_NONE) {
+    uint32_t t = now - ledFlashAt;
+    if (t < 600) {   // three quick blinks
+      ledWrite(ledFlashKind == LED_FLASH_SAVE ? 0x00FF20 : 0xFFB000, (t / 100) & 1 ? 0 : 255);
+      return;
+    }
+    ledFlashKind = LED_FLASH_NONE;
+  }
+  int mode = cfg.ledMode % 3;
+  if (ledInGame && cfg.ledGame == 1 && mode) mode = 1;
+  if (ledInGame && cfg.ledGame == 2) mode = 0;
+  int level = mode == 0 ? 0 : mode == 1 ? 255 : (int)(20 + 235 * (0.5f - 0.5f * cosf(now * (6.2832f / 3000))));
+  ledWrite(ledBaseColor(), level);
+}
+static void ledInit() {
+  ledc_timer_config_t t = {};
+  t.speed_mode = LEDC_LOW_SPEED_MODE;
+  t.duty_resolution = LEDC_TIMER_8_BIT;
+  t.timer_num = LEDC_TIMER_0;
+  t.freq_hz = 5000;
+  t.clk_cfg = LEDC_AUTO_CLK;
+  if (ledc_timer_config(&t) != ESP_OK) return;
+  const int pins[3] = { PIN_LED_R, PIN_LED_G, PIN_LED_B };
+  for (int i = 0; i < 3; i++) {
+    ledc_channel_config_t c = {};
+    c.gpio_num = pins[i];
+    c.speed_mode = LEDC_LOW_SPEED_MODE;
+    c.channel = (ledc_channel_t)i;
+    c.timer_sel = LEDC_TIMER_0;
+    c.duty = 0;
+    c.flags.output_invert = 1;   // the LED lights when the pin is low
+    ledc_channel_config(&c);
+  }
+  esp_timer_create_args_t a = {};
+  a.callback = ledTimer;
+  a.name = "led";
+  esp_timer_handle_t h;
+  if (esp_timer_create(&a, &h) == ESP_OK) esp_timer_start_periodic(h, 30000);
+  ledReady = true;
+}
+static void ledFlash(int kind) {
+  if ((kind == LED_FLASH_SAVE && !cfg.ledFlashSave) || (kind == LED_FLASH_CHEAT && !cfg.ledFlashCheat)) return;
+  ledFlashAt = millis();
+  ledFlashKind = kind;
+}
+// While a game runs (the pause menu counts as a menu).
+struct LedGameScope {
+  LedGameScope() { ledInGame = true; }
+  ~LedGameScope() { ledInGame = false; }
+};
+struct LedMenuScope {   // inside the pause menu
+  LedMenuScope() { ledInGame = false; }
+  ~LedMenuScope() { ledInGame = true; }
+};
+
 #define C_BG     tc.bg       // background
 #define C_PANEL  tc.panel    // list rows, buttons
 #define C_HILITE tc.hilite   // selected row
@@ -874,6 +1007,7 @@ static void wfPalette(WireFb &f, int glow) {
   f.pal[WI_BACK] = mixHex(t.bronze, 0xFFFFFF, glow);
   f.pal[WI_SIDE] = mixHex(t.dim, 0xFFFFFF, glow / 2);
   for (int i = 0; i < 4; i++) f.pal[WI_STAR1 + i] = mixHex(t.bg, t.text, 70 + i * 60);
+  for (int i = 0; i < 16; i++) f.pal[i] = (uint16_t)((f.pal[i] >> 8) | (f.pal[i] << 8));   // pushImage takes them byte-swapped
 }
 
 // ---- boot screen: stars fly past, the logo spins in from far away, settles and
@@ -1931,6 +2065,7 @@ static bool sramSave() {
     if (f) { f.write((uint8_t *)gb_rtc_ptr(), gb_rtc_size()); f.close(); }
   }
   if (ok) gb_sram_clear_dirty();
+  if (ok && (gb_sram_size() > 0 || gb_has_rtc())) ledFlash(LED_FLASH_SAVE);
   saveBankUse();   // big ROMs: remember which banks were busy
   return ok;
 }
@@ -2381,6 +2516,37 @@ static void controllerMenu() {
   }
 }
 
+// Board LED (and the PS4 light bar). Opened from Setup and from the pause menu.
+static void ledMenu() {
+  while (true) {
+    std::vector<MenuItem> it = {
+      { "Mode", LED_MODES[cfg.ledMode % 3] },
+      { "Color", LED_COLORS[cfg.ledColor % NUM_LED_COLORS].name },
+      { "Brightness", String((cfg.ledBright % 4 + 1) * 25) + "%" },
+      { "During games", LED_GAME[cfg.ledGame % 3] },
+      { "Flash on save", cfg.ledFlashSave ? "On" : "Off" },
+      { "Flash on cheat", cfg.ledFlashCheat ? "On" : "Off" },
+#if HAVE_BT
+      { "Controller light", PAD_LIGHT[cfg.padLight % 3] },
+#endif
+    };
+    static int selLed = -1;
+    int i = runList("LED", "Back", it, &selLed);
+    switch (i) {
+      case 0: cfg.ledMode = (cfg.ledMode + 1) % 3; break;
+      case 1: cfg.ledColor = (cfg.ledColor + 1) % NUM_LED_COLORS; break;
+      case 2: cfg.ledBright = (cfg.ledBright + 1) % 4; break;
+      case 3: cfg.ledGame = (cfg.ledGame + 1) % 3; break;
+      case 4: cfg.ledFlashSave ^= 1; if (cfg.ledFlashSave) ledFlash(LED_FLASH_SAVE); break;   // shows it once
+      case 5: cfg.ledFlashCheat ^= 1; if (cfg.ledFlashCheat) ledFlash(LED_FLASH_CHEAT); break;
+      case 6: cfg.padLight = (cfg.padLight + 1) % 3; break;
+      default: saveSettings(); return;
+    }
+    padLightApply();
+    saveSettings();
+  }
+}
+
 static void settingsMenu() {
   while (true) {
     std::vector<MenuItem> it = {
@@ -2391,6 +2557,7 @@ static void settingsMenu() {
       { "Brightness", String(cfg.brightness * 100 / 255) + "%" },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
       { "Theme", theme().name },
+      { "LED", ">" },
       { "Display & touch", ">" },
       { "Free memory", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB (max " +
                        String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + ")" },
@@ -2409,9 +2576,10 @@ static void settingsMenu() {
       case 3: cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES; break;
       case 4: cfg.brightness = cfg.brightness >= 255 ? 64 : min(255, cfg.brightness + 64); break;
       case 5: cfg.showFps ^= 1; break;
-      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); break;
-      case 7: displayTouchMenu(); break;
-      case 9: controllerMenu(); break;
+      case 6: cfg.theme = (cfg.theme + 1) % NUM_THEMES; applyTheme(); padLightApply(); break;
+      case 7: ledMenu(); break;
+      case 8: displayTouchMenu(); break;
+      case 10: controllerMenu(); break;
     }
     applyDisplaySettings(false);
     saveSettings();
@@ -2846,6 +3014,7 @@ static void cheatsMenu() {
       } else {
         cheats[i].on = !cheats[i].on;
         cheatsDirty = true;
+        if (cheats[i].on) ledFlash(LED_FLASH_CHEAT);
       }
     } else if (i == nc) {
       cheatFinder();
@@ -2905,6 +3074,7 @@ static void stateMessage(const char *l1, const char *l2, uint16_t c, int ms) {
 }
 
 static PauseResult pauseMenu() {
+  LedMenuScope ledScope;
   while (true) {
     int sram = gb_sram_size();
     bool haveState = SD.exists(statePath);
@@ -2919,6 +3089,7 @@ static PauseResult pauseMenu() {
       { "Scaling", scaleName() },
       { "DMG palette", gb_is_cgb() ? "GBC game" : DMG_PALETTE_NAMES[cfg.dmgPalette % NUM_DMG_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
+      { "LED", ">" },
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
@@ -2931,6 +3102,7 @@ static PauseResult pauseMenu() {
       case 1: {
         uiMessage("Saving state...");
         bool ok = gbStateSave();
+        if (ok) ledFlash(LED_FLASH_SAVE);
         stateMessage(ok ? "State saved" : "Save state FAILED", ok ? nullptr : "Check the SD card", ok ? C_GREEN : C_RED, ok ? 600 : 1500);
         if (ok) return P_RESUME;
         break;
@@ -2965,8 +3137,9 @@ static PauseResult pauseMenu() {
         if (!gb_is_cgb()) { cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; lcd_set_dmg_palette(DMG_PALETTES[cfg.dmgPalette]); saveSettings(); }
         break;
       case 8: cfg.showFps ^= 1; saveSettings(); break;
-      case 9: return P_RESET;
-      case 10: return P_QUIT;
+      case 9: ledMenu(); break;
+      case 10: return P_RESET;
+      case 11: return P_QUIT;
     }
   }
 }
@@ -3033,6 +3206,7 @@ static void runGame(const RomEntry &r) {
   statePath = "/gbc/saves/" + b + ".st0";
   String ext = String(r.name()); ext.toLowerCase();
   cheatsLoad(ext.endsWith(".gbc") ? 1 : 0, b);
+  LedGameScope ledScope;   // the LED follows "During games" until the game ends
 
   vSys = SYS_GB; srcW = 160; srcH = 144;
   gb_glue_init(AUDIO_RATE);
@@ -3276,7 +3450,7 @@ static bool nesSramSave(bool force) {
   if (!f) return false;
   bool ok = f.write(p, n) == (size_t)n;
   f.close();
-  if (ok) nesSramSum = sum;
+  if (ok) { nesSramSum = sum; ledFlash(LED_FLASH_SAVE); }
   return ok;
 }
 
@@ -3287,6 +3461,7 @@ static void nesResetGame() {
 }
 
 static PauseResult nesPauseMenu(const char *title) {
+  LedMenuScope ledScope;
   while (true) {
     int sram = nes_sram_size();
     bool haveState = SD.exists(statePath);
@@ -3300,6 +3475,7 @@ static PauseResult nesPauseMenu(const char *title) {
       { "Scaling", scaleName() },
       { "NES palette", NES_PALETTE_NAMES[cfg.nesPalette % NES_NUM_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
+      { "LED", ">" },
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
@@ -3312,6 +3488,7 @@ static PauseResult nesPauseMenu(const char *title) {
       case 1: {
         uiMessage("Saving state...");
         bool ok = nesStateSave();
+        if (ok) ledFlash(LED_FLASH_SAVE);
         stateMessage(ok ? "State saved" : "Save state FAILED", ok ? nullptr : "Check the SD card", ok ? C_GREEN : C_RED, ok ? 600 : 1500);
         if (ok) return P_RESUME;
         break;
@@ -3344,8 +3521,9 @@ static PauseResult nesPauseMenu(const char *title) {
         saveSettings();
         break;
       case 8: cfg.showFps ^= 1; saveSettings(); break;
-      case 9: return P_RESET;
-      case 10: return P_QUIT;
+      case 9: ledMenu(); break;
+      case 10: return P_RESET;
+      case 11: return P_QUIT;
     }
   }
 }
@@ -3367,6 +3545,7 @@ static void runNes(const RomEntry &r) {
   nesSavePath = "/gbc/saves/nes/" + b + ".sav";
   statePath = "/gbc/saves/nes/" + b + ".st0";
   cheatsLoad(2, b);
+  LedGameScope ledScope;
   bool pal = b.indexOf("(E)") >= 0 || b.indexOf("(Europe)") >= 0 || b.indexOf("(A)") >= 0 ||
              b.indexOf("(Australia)") >= 0 || b.indexOf("(PAL)") >= 0;
   int mapper = (romPtr[6] >> 4) | (romPtr[7] & 0xF0);
@@ -3572,8 +3751,64 @@ static void drawFolderIcon(int x, int y, uint16_t c) {
 }
 
 #define BROWSER_ROW_H 32
-#define BROWSER_Y0 34
 static int browserMarq = -1;   // entry whose name is scrolling (-1 = none)
+
+// ---- A-Z jump: "#" (numbers and symbols) and A to Z. Landscape shows a strip of letters
+// under the title bar; portrait has an "A-Z" button that opens a grid of letters.
+// Controller: Select opens it. Only shown when the folder doesn't fit on one screen. ----
+#define AZ_N 27
+#define AZ_STRIP_H 18
+static uint32_t azMask = 0;   // letters that have at least one entry
+static int azLetter(const char *n) {
+  int c = toupper((unsigned char)n[0]);
+  return c >= 'A' && c <= 'Z' ? c - 'A' + 1 : 0;
+}
+static bool azEntry(const Ent &e) { return e.kind != K_UP && e.kind != K_MORE; }
+static bool azNeeded() { return (int)roms.size() > (SCR_H - 34) / BROWSER_ROW_H; }
+static bool azStripOn() { return SCR_W > SCR_H && azNeeded(); }
+static bool azButtonOn() { return SCR_W <= SCR_H && azNeeded(); }
+static int browserY0() { return 34 + (azStripOn() ? AZ_STRIP_H : 0); }
+static int browserVisible() { return (SCR_H - browserY0()) / BROWSER_ROW_H; }
+static void azBuild() {
+  azMask = 0;
+  for (auto &e : roms) if (azEntry(e)) azMask |= 1u << azLetter(e.name);
+}
+static int azFirst(int L) {
+  for (size_t i = 0; i < roms.size(); i++)
+    if (azEntry(roms[i]) && azLetter(roms[i].name) == L) return (int)i;
+  return -1;
+}
+static int azCurrent() {   // letter of the first game or folder on screen
+  for (int i = browserTop; i < (int)roms.size(); i++) if (azEntry(roms[i])) return azLetter(roms[i].name);
+  return -1;
+}
+static char azChar(int L) { return L ? (char)('A' + L - 1) : '#'; }
+static uint16_t azDimColor() { return mixHex(theme().bg, theme().dim, 90); }
+
+static void azDrawStrip(int focus) {
+  const float cw = (SCR_W - 8) / (float)AZ_N;
+  const int y = 34, cur = azCurrent();
+  lcd.startWrite();
+  lcd.fillRect(0, y, SCR_W, AZ_STRIP_H, C_BG);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextDatum(middle_center);
+  for (int i = 0; i < AZ_N; i++) {
+    int cx = 4 + (int)(cw * (i + 0.5f));
+    bool have = azMask & (1u << i);
+    uint16_t bg = C_BG;
+    if (i == focus) {
+      bg = C_HILITE;
+      lcd.fillRoundRect(cx - 6, y, 13, AZ_STRIP_H - 1, 3, bg);
+      lcd.drawRoundRect(cx - 6, y, 13, AZ_STRIP_H - 1, 3, C_ACCENT);
+    }
+    lcd.setTextColor(i == cur ? C_ACCENT : have ? C_TEXT : azDimColor(), bg);
+    char t[2] = { azChar(i), 0 };
+    lcd.drawString(t, cx, y + 8);
+    if (i == cur && focus < 0) lcd.drawFastHLine(cx - 4, y + AZ_STRIP_H - 2, 9, C_ACCENT);
+  }
+  lcd.setTextDatum(top_left);
+  lcd.endWrite();
+}
 
 // Right end of the name area of a row (the type and size sit to its right).
 static String browserTag(Ent &e) {
@@ -3591,9 +3826,9 @@ static uint16_t browserFg(Ent &e) {
 
 // scroll: the name of this row scrolls (it's selected, or its turn in touch mode)
 static void drawBrowserRow(int idx, bool scroll) {
-  const int rowH = BROWSER_ROW_H, y0 = BROWSER_Y0;
+  const int rowH = BROWSER_ROW_H, y0 = browserY0();
   int i = idx - browserTop;
-  if (i < 0 || i >= (SCR_H - y0) / rowH || idx >= (int)roms.size()) return;
+  if (i < 0 || i >= browserVisible() || idx >= (int)roms.size()) return;
   Ent &e = roms[idx];
   int y = y0 + i * rowH;
   bool hi = idx == browserSel;
@@ -3649,11 +3884,12 @@ static void drawBrowserRow(int idx, bool scroll) {
 }
 
 static void drawBrowser() {
-  const int rowH = BROWSER_ROW_H, y0 = BROWSER_Y0;
+  const int rowH = BROWSER_ROW_H, y0 = browserY0();
   glowOff(); marqueeOff(); browserMarq = -1;
+  if (azStripOn()) azDrawStrip(-1);
   lcd.startWrite();
   lcd.fillRect(0, y0, SCR_W, SCR_H - y0, C_BG);
-  int visible = (SCR_H - y0) / rowH;
+  int visible = browserVisible();
   for (int i = 0; i < visible; i++) drawBrowserRow(browserTop + i, browserTop + i == browserSel);
   // scrollbar
   if ((int)roms.size() > visible) {
@@ -3668,7 +3904,7 @@ static void drawBrowser() {
 // With no row selected (touch), cut-off names take turns scrolling, one at a time.
 static void browserMarqueeRotate() {
   if (browserSel >= 0 || roms.empty() || (marq.on && marq.loops == 0)) return;
-  int visible = (SCR_H - BROWSER_Y0) / BROWSER_ROW_H;
+  int visible = browserVisible();
   int start = browserMarq >= browserTop ? browserMarq - browserTop + 1 : 0;
   int prev = browserMarq;
   lcd.setFont(&fonts::Font2);
@@ -3689,6 +3925,112 @@ static void browserMarqueeRotate() {
   if (prev >= 0 && marq.loops > 0) { marq.loops = 0; }   // the only long name: it scrolls again
 }
 
+// Shows the first entry with letter L at the top (select: also highlight it).
+static void azJump(int L, bool select) {
+  int t = azFirst(L);
+  if (t < 0) return;
+  browserTop = constrain(t, 0, max(0, (int)roms.size() - browserVisible()));
+  if (select) browserSel = t;
+  drawBrowser();
+}
+static int azStep(int L, int d) {   // next letter that has entries, either way, wrapping
+  for (int k = 1; k <= AZ_N; k++) {
+    int n = ((L + d * k) % AZ_N + AZ_N) % AZ_N;
+    if (azMask & (1u << n)) return n;
+  }
+  return L;
+}
+
+// Landscape, controller: Select puts the highlight on the letter strip. Left / right pick
+// a letter (the list follows), OK / Select / Down go to it, Back returns to where you were.
+static void azStripFocus() {
+  int L = azCurrent();
+  if (L < 0 || !(azMask & (1u << L))) L = azStep(0, 1);
+  int top0 = browserTop, sel0 = browserSel;
+  azJump(L, false);
+  azDrawStrip(L);
+  btNavReset();
+  while (true) {
+    int ev = btNav();
+    if (ev == NAV_LEFT || ev == NAV_RIGHT || ev == NAV_UP) {
+      L = azStep(L, ev == NAV_LEFT || ev == NAV_UP ? -1 : 1);
+      azJump(L, false);
+      azDrawStrip(L);
+    } else if (ev == NAV_OK || ev == NAV_SELECT || ev == NAV_DOWN) {
+      browserSel = azFirst(L);
+      drawBrowser();
+      return;
+    } else if (ev == NAV_BACK || ev == NAV_SYS) {
+      browserTop = top0; browserSel = sel0;
+      drawBrowser();
+      return;
+    }
+    int x, y;
+    if (readTouch(x, y)) { while (readTouch(x, y)) delay(10); drawBrowser(); return; }
+    uiTick();
+    delay(10);
+  }
+}
+
+// Portrait: a grid of big letter buttons over the list. Returns a letter, or -1.
+static int azGrid() {
+  const int cols = 6, rows = 5, gx = 6, gy = 40;
+  const int cw = (SCR_W - 12) / cols, ch = min(46, (SCR_H - gy - 6) / rows);
+  int f = azCurrent();
+  if (f < 0 || !(azMask & (1u << f))) f = azStep(0, 1);
+  auto cellRect = [&](int i, int &x, int &y, int &w) {   // 27 = "Cancel" (last three cells)
+    x = gx + (i % cols) * cw; y = gy + (i / cols) * ch; w = i == AZ_N ? cw * 3 : cw;
+  };
+  auto drawCell = [&](int i) {
+    int x, y, w;
+    cellRect(i, x, y, w);
+    bool foc = i == f;
+    uint16_t bg = foc ? C_HILITE : C_PANEL;
+    lcd.fillRoundRect(x + 2, y + 2, w - 4, ch - 4, 6, bg);
+    lcd.drawRoundRect(x + 2, y + 2, w - 4, ch - 4, 6, foc ? C_ACCENT : bg);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextDatum(middle_center);
+    if (i == AZ_N) {
+      lcd.setTextColor(C_DIM, bg);
+      lcd.drawString("Cancel", x + w / 2, y + ch / 2);
+    } else {
+      lcd.setTextSize(2);
+      lcd.setTextColor(azMask & (1u << i) ? C_TEXT : azDimColor(), bg);
+      char t[2] = { azChar(i), 0 };
+      lcd.drawString(t, x + w / 2, y + ch / 2 + 1);
+      lcd.setTextSize(1);
+    }
+    lcd.setTextDatum(top_left);
+  };
+  glowOff(); marqueeOff(); browserMarq = -1;
+  lcd.fillRect(0, 34, SCR_W, SCR_H - 34, C_BG);
+  for (int i = 0; i <= AZ_N; i++) drawCell(i);
+  btNavReset();
+  int x, y;
+  while (readTouch(x, y)) delay(10);
+  while (true) {
+    int ev = btNav(), nf = f;
+    if (ev == NAV_LEFT) nf = f == AZ_N ? AZ_N - 1 : max(0, f - 1);
+    else if (ev == NAV_RIGHT) nf = min(AZ_N, f + 1);
+    else if (ev == NAV_UP) nf = f == AZ_N ? AZ_N - 3 : max(0, f - cols);
+    else if (ev == NAV_DOWN) nf = min(AZ_N, f + cols);
+    else if (ev == NAV_OK) { if (f == AZ_N) return -1; if (azMask & (1u << f)) return f; }
+    else if (ev == NAV_BACK || ev == NAV_SELECT || ev == NAV_SYS) return -1;
+    if (nf != f) { int o = f; f = nf; drawCell(o); drawCell(f); }
+    if (readTouch(x, y)) {
+      int sx = x, sy = y;
+      while (readTouch(x, y)) delay(10);
+      int c = (sx - gx) / cw, r = (sy - gy) / ch;
+      if (sx < gx || sy < gy || c >= cols || r >= rows) return -1;
+      int i = min(AZ_N, r * cols + c);
+      if (i == AZ_N) return -1;
+      if (azMask & (1u << i)) return i;
+    }
+    uiTick();
+    delay(10);
+  }
+}
+
 static int runBrowserLoop();
 // Returns an index into roms, -1 = Setup, -2 = rescan, -4 = redraw, -5 = folder up
 static int runBrowser() {
@@ -3698,8 +4040,10 @@ static int runBrowser() {
 }
 
 static int runBrowserLoop() {
-  const int rowH = 32, y0 = 34;
-  int visible = (SCR_H - y0) / rowH;
+  azBuild();
+  const int rowH = BROWSER_ROW_H, y0 = browserY0();
+  int visible = browserVisible();
+  const bool azBtn = azButtonOn();
   lcd.fillScreen(C_BG);
   char title[64];
   lcd.setFont(&fonts::Font2);
@@ -3710,11 +4054,20 @@ static int runBrowserLoop() {
     // inside a folder: its path below the games root, e.g. "GBC / RPG"
     String rel = curDir.substring(rootDir == "/" ? 1 : rootDir.length() + 1);
     rel.replace("/", " / ");
-    while (rel.length() > 4 && lcd.textWidth(rel) > SCR_W - 76) rel = "~" + rel.substring(2);
+    while (rel.length() > 4 && lcd.textWidth(rel) > SCR_W - 76 - (azBtn ? 42 : 0)) rel = "~" + rel.substring(2);
     snprintf(title, sizeof title, "%s", rel.c_str());
   }
-  uiHeader(title, "Setup", HAVE_BT ? "Share" : nullptr);   // PS4 Share = Select opens Setup
-  headerHints(title, SCR_W - 68, "Open", curDir != rootDir ? "Up" : nullptr);
+  uiHeader(title, "Setup", HAVE_BT ? "Options" : nullptr);   // PS4 Options (Start) opens Setup
+  if (azBtn) {   // portrait: A-Z button left of Setup
+    lcd.fillRoundRect(SCR_W - 106, 4, 38, 24, 6, C_PANEL);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_TEXT, C_PANEL);
+    lcd.setTextDatum(middle_center);
+    lcd.drawString("A-Z", SCR_W - 87, 16);
+    lcd.setTextDatum(top_left);
+    hdrReserve(SCR_W - 106);
+  }
+  headerHints(title, azBtn ? SCR_W - 110 : SCR_W - 68, "Open", curDir != rootDir ? "Up" : nullptr);
   bool empty = romFiles == 0 && (roms.empty() || (roms.size() == 1 && roms[0].kind == K_UP));
   if (!sdOk) { uiMessage("No SD card found", "Insert card, then tap to retry", C_RED); }
   else if (roms.empty()) { uiMessage("No games found", "Put them in /Roms/GB, /Roms/GBC, /Roms/NES", C_RED); }
@@ -3737,7 +4090,13 @@ static int runBrowserLoop() {
     // controller: d-pad moves, A/Start opens, B goes up a folder, Select opens Setup
     int ev = btNav();
     if (ev != NAV_NONE) browserByPad = true;
-    if (ev == NAV_SELECT) return -1;
+    if (ev == NAV_OK && navFromStart) return -1;   // Options: Setup
+    if (ev == NAV_SELECT && sdOk && azNeeded()) {   // Select: A-Z
+      browserByPad = true;
+      if (azStripOn()) azStripFocus();
+      else { int L = azGrid(); if (L >= 0) azJump(L, true); else drawBrowser(); }
+      continue;
+    }
     if (ev == NAV_BACK && sdOk && curDir != rootDir) return -5;
     if (!roms.empty() && sdOk && ev != NAV_NONE) {
       int n = (int)roms.size(), s0 = browserSel;
@@ -3787,6 +4146,12 @@ static int runBrowserLoop() {
     if (moved > 10) continue;
     if (sy < 32) {
       if (sx > SCR_W - 70) return -1;  // settings
+      if (azBtn && sx > SCR_W - 108) { int L = azGrid(); if (L >= 0) azJump(L, false); else drawBrowser(); }
+      continue;
+    }
+    if (azStripOn() && sy < y0) {      // tap a letter
+      int L = (int)((sx - 4) * AZ_N / (float)(SCR_W - 8));
+      if (L >= 0 && L < AZ_N && (azMask & (1u << L))) azJump(L, browserSel >= 0);
       continue;
     }
     if (!sdOk || roms.empty()) return -2;  // rescan
@@ -3804,7 +4169,7 @@ static void browserSelectPath(const String &path) {
   if (dir == curDir)
     for (size_t i = 0; i < roms.size(); i++)
       if (roms[i].kind != K_UP && roms[i].kind != K_MORE && !strcmp(roms[i].name, name)) { browserSel = (int)i; break; }
-  int visible = (SCR_H - 34) / 32;
+  int visible = browserVisible();
   if (browserSel >= 0) {
     if (browserSel < browserTop || browserSel >= browserTop + visible) browserTop = max(0, browserSel - visible / 2);
   } else {
@@ -3838,6 +4203,7 @@ void setup() {
   // hold BOOT during power-up to reset display/touch settings
   if (bootPressed()) { cfg = Settings(); saveSettings(); }
   applyTheme();
+  ledInit();
 
   lcd.setRgbOrder(cfg.swapRB);
   lcd.init();

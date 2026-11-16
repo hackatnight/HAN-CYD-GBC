@@ -131,6 +131,20 @@ menus. The menus animate while idle: stars in the header, a light along its bron
 glowing selected row, and names too long for their row scroll sideways (the selected one,
 or with touch, each cut-off name in turn).
 
+## A-Z jump (v2.7.0)
+
+In folders longer than one screen. Landscape: a strip of letters under the title bar (tap a
+letter; the underlined one is where you are). Portrait: an "A-Z" button next to Setup opens a
+grid of letters. Controller: Select (Share) opens it, the d-pad picks a letter, OK goes there,
+Back cancels. Setup moved to Options (Start) on the controller. Letters with no games are dimmed.
+
+## Board LED (v2.7.0)
+
+Setup > LED, or LED in the pause menu: mode (off, solid, breathing), color (theme or one of
+nine), brightness, what it does during games (same, steady, off), green blinks when a save or
+state is written, yellow blinks when a cheat is turned on, and (Bluetooth build) the PS4
+controller's light bar: blue, match the LED, or off. The RGB LED is on GPIO 4 / 16 / 17.
+
 ## Controls
 
 - D-pad (8-way) on the left. A and B on the right; touching the gap between them presses both.
