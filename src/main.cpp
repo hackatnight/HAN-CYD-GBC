@@ -265,7 +265,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.23"
+#define APP_VERSION "2.19.24"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3160,77 +3160,42 @@ static void xptReportSerial() {
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  pin %d = %d\n", WATCH[k], digitalRead(WATCH[k]));
 
-  // Where does the chip's answer come back on?
+  // Nothing here borrows the screen's SPI bus any more.
   //
-  // Nothing above ever moved the data line. The screen bus carries it on GPIO12, and
-  // that is the one thing every read so far had in common, so it is the one thing left
-  // to vary. The pin is not touched directly: the ESP32 routes a peripheral signal to a
-  // pin through its GPIO matrix, so pointing the bus input at a different pin and
-  // reading again costs nothing and cannot leave a pin stranded.
+  // Three separate attempts to take it, measure, and hand it back have frozen the board.
+  // The DMA channel explained two of them and was fixed; this one was not that, and the
+  // honest reading is that this bus cannot be borrowed safely from inside this firmware.
+  // LovyanGFX's Bus_SPI keeps state that a raw spi::init does not restore, and guessing
+  // at the rest costs a reset every time.
   //
-  // The screen is deselected first and its bus is handed back exactly as it was, DMA
-  // channel included. Giving it back without the DMA channel is what froze the board
-  // twice: the bus came back without it and the next drawing wrote into nothing.
-  {
-    static const int MISO_TRY[] = { PIN_LCD_MISO, 39, 35, 34 };
-    uint8_t d[57];
-    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
-    lcd.endWrite();                    // let go of the screen before borrowing its bus
-    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);   // and off the bus
-    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
-      lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, BUS_DMA_CH);
-      bool got = xptReadWith(PIN_TP_CS, d);
-      Serial.printf("  answer on GPIO%-2d: %02X %02X %02X %02X %02X %02X %02X %02X  %s\n",
-                    MISO_TRY[k], d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
-                    got ? "<-- THE CHIP ANSWERS" : "");
-    }
-    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
-    if (lcdMutex) xSemaphoreGive(lcdMutex);
-    Serial.println("  (bus handed back, DMA included)");
-  }
+  // What is left below reads pins only, which has never caused a problem.
 
-  // And the same read with no peripheral involved at all: four pins, clocked by hand.
+  // One arrangement never tested: the touch chip on the SD card's bus.
   //
-  // This was tried once before and returned zeros, which looked like proof the chip was
-  // unreachable. It proved nothing: it ran without taking lcdMutex and without ending
-  // the screen's transaction, so the screen's own chip select was very likely still low.
-  // A selected ILI9341 drives the same data line, and it would have swamped anything the
-  // touch chip said. Every zero measured that way is worthless.
-  //
-  // So: take the lock, end the transaction, and drive the screen's chip select high by
-  // hand before clocking anything, so there is exactly one chip on the bus.
+  // Every read so far has been on the screen's bus, because that is where this board's
+  // documentation puts the touch chip. The SD card has a bus of its own, driven by the
+  // Arduino SPI library rather than by the graphics library, and nothing has ever asked
+  // whether the chip answers there. It is worth ruling out, and it is free to try: this
+  // borrows no pins and touches nothing the screen owns, so it cannot freeze anything.
   {
-    const int sclk = PIN_LCD_SCLK, mosi = PIN_LCD_MOSI, miso = PIN_LCD_MISO;
-    static const uint8_t cmd[3] = { 0xD0, 0x90, 0xB0 };   // X, Y, pressure
-    uint16_t v[3];
-    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
-    lcd.endWrite();
-    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);   // screen off the bus
-    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
-    pinMode(mosi, OUTPUT);
-    pinMode(miso, INPUT);
-    pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
-    for (int c = 0; c < 3; c++) {
-      uint32_t r = 0;
-      digitalWrite(PIN_TP_CS, LOW);
-      for (int i = 7; i >= 0; i--) {
-        digitalWrite(mosi, (cmd[c] >> i) & 1);
-        digitalWrite(sclk, HIGH); delayMicroseconds(3);
-        digitalWrite(sclk, LOW);  delayMicroseconds(3);
-      }
-      for (int i = 0; i < 16; i++) {
-        digitalWrite(sclk, HIGH); delayMicroseconds(3);
-        r = (r << 1) | (digitalRead(miso) ? 1 : 0);
-        digitalWrite(sclk, LOW);  delayMicroseconds(3);
-      }
-      digitalWrite(PIN_TP_CS, HIGH);
-      v[c] = (uint16_t)((r >> 3) & 0x0FFF);
-      delayMicroseconds(50);
+    static const uint8_t seq[8] = { 0x91, 0, 0xB1, 0, 0xD1, 0, 0xC1, 0 };
+    uint8_t d[8];
+    Serial.println("  on the SD card's bus (sclk 18, data 23/19):");
+    for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
+      int cs = CS_TRY[k];
+      pinMode(cs, OUTPUT); digitalWrite(cs, HIGH);
+      sdSPI.beginTransaction(SPISettings(TOUCH_SPI_HZ, MSBFIRST, SPI_MODE0));
+      digitalWrite(cs, LOW);
+      for (int i = 0; i < 8; i++) d[i] = sdSPI.transfer(seq[i]);
+      digitalWrite(cs, HIGH);
+      sdSPI.endTransaction();
+      bool got = false;
+      for (int i = 0; i < 8; i++) if (d[i] != 0x00 && d[i] != 0xFF) got = true;
+      Serial.printf("    cs%-3d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", cs,
+                    d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], got ? "<-- ANSWERS" : "");
+      if (cs != PIN_TP_CS) pinMode(cs, INPUT);
     }
-    lgfx::spi::init(HSPI_HOST, sclk, miso, mosi, BUS_DMA_CH);   // DMA included
-    if (lcdMutex) xSemaphoreGive(lcdMutex);
-    Serial.printf("  by hand, screen deselected: x=%u y=%u z=%u  %s\n", v[0], v[1], v[2],
-                  (v[0] || v[1] || v[2]) ? "<-- THE CHIP ANSWERS" : "(nothing)");
+    pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
   }
 
   // Now the pull test, with the screen deselected so it cannot be the thing holding a
