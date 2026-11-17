@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.25.0"
+#define APP_VERSION "2.25.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -2196,11 +2196,13 @@ static void layoutControls() {
     BTN_A_X = 207; BTN_A_Y = 250; BTN_B_X = 162; BTN_B_Y = 284; BTN_R = 20;
     MISC_X0 = 104; MISC_W = 32; MISC_GAP = 0; MISC_Y0 = 222;
   } else {
-    // bottom corners, where thumbs already rest when the board is held sideways
-    DPAD_ARM = 36; DPAD_CX = 44; DPAD_CY = SCR_H - 48;
-    BTN_R = 16; BTN_A_X = SCR_W - 28; BTN_A_Y = SCR_H - 60;
-    BTN_B_X = SCR_W - 62; BTN_B_Y = SCR_H - 32;
-    MISC_W = 34; MISC_GAP = 4; MISC_Y0 = SCR_H - 17;
+    // Held off the edges. A resistive panel reads worst in its last few millimetres,
+    // and a fingertip that lands half over the rim is half outside the zone, so the
+    // shapes sit well inboard and are drawn bigger than the portrait pad's.
+    DPAD_ARM = 46; DPAD_CX = 64; DPAD_CY = SCR_H - 76;
+    BTN_R = 20; BTN_A_X = SCR_W - 46; BTN_A_Y = SCR_H - 84;
+    BTN_B_X = SCR_W - 80; BTN_B_Y = SCR_H - 48;
+    MISC_W = 32; MISC_GAP = 4; MISC_Y0 = SCR_H - 28;
     MISC_X0 = SCR_W / 2 - (3 * MISC_W + 2 * MISC_GAP) / 2;
   }
 }
@@ -2285,7 +2287,11 @@ static int touchToPad(int x, int y) {
   if (ctrlOverlay) {
     // Only the three corners answer; the rest of the picture stays a plain tap, so
     // tapping the middle of a game still opens the menu as it always did.
-    if (x <= DPAD_CX + DPAD_ARM + 8 && y >= DPAD_CY - DPAD_ARM - 8) {
+    if (y >= MISC_Y0 - 5) {
+      int i = (x - MISC_X0) / (MISC_W + MISC_GAP);
+      if (x >= MISC_X0 && i >= 0 && i < 3) return i == 0 ? HIT_MENU : (i == 1 ? PAD_SELECT : PAD_START);
+    }
+    if (x <= DPAD_CX + DPAD_ARM + 10 && y >= DPAD_CY - DPAD_ARM - 10) {
       int dx = x - DPAD_CX, dy = y - DPAD_CY;
       if (dx * dx + dy * dy < 7 * 7) return HIT_NONE;
       int p = 0;
@@ -2295,15 +2301,11 @@ static int touchToPad(int x, int y) {
       if (dx > 0 && dx * 5 > abs(dy) * 2) p |= PAD_RIGHT;
       return p;
     }
-    if (x >= BTN_B_X - BTN_R - 6 && y >= BTN_A_Y - BTN_R - 6) {
+    if (x >= BTN_B_X - BTN_R - 10 && y >= BTN_A_Y - BTN_R - 10) {
       float fa = sqrtf((float)((x - BTN_A_X) * (x - BTN_A_X) + (y - BTN_A_Y) * (y - BTN_A_Y)));
       float fb = sqrtf((float)((x - BTN_B_X) * (x - BTN_B_X) + (y - BTN_B_Y) * (y - BTN_B_Y)));
       if (fabsf(fa - fb) < 8.0f && fa < BTN_R * 2 && fb < BTN_R * 2) return PAD_A | PAD_B;
       return fa < fb ? PAD_A : PAD_B;
-    }
-    if (y >= MISC_Y0 - 5) {
-      int i = (x - MISC_X0) / (MISC_W + MISC_GAP);
-      if (x >= MISC_X0 && i >= 0 && i < 3) return i == 0 ? HIT_MENU : (i == 1 ? PAD_SELECT : PAD_START);
     }
     return HIT_NONE;
   }
