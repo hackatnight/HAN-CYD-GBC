@@ -81,6 +81,7 @@
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
+  .stock { border-top: 1px solid var(--hilite); padding-top: 12px; }
   .erase { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .erase input { width: 16px; height: 16px; }
   .boards details { margin-top: 2px; }
@@ -161,6 +162,10 @@
         <button class="btn small ghost" id="dl-untested">Download .bin</button>
       </div>
     </div>
+    <p class="pickfoot stock">Putting this board back to the firmware it came with:
+      <a href="https://flash.nmminer.com/" target="_blank" rel="noopener">flash.nmminer.com</a>
+      &rarr; device <code>elecrow-esp32-display-24inch</code>, version <code>v2.0.04</code>.
+      Their files cannot be flashed from this page: the browser refuses to read them across sites.</p>
     <label class="pickfoot erase"><input type="checkbox" id="eraseFirst"> Erase the whole flash first
       <span class="picknote">(wipes saved games and settings; leave off for an update)</span></label>
     <p class="pickfoot">Pick your board, then <strong>Flash now</strong>. What each board does and doesn't support is in
