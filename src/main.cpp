@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.20"
+#define APP_VERSION "2.19.21"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3060,18 +3060,16 @@ static void xptProbeScan() {
 //
 // This uses the library's own SPI calls on the bus it already owns - no pin is taken
 // away from the display, which is what wedged the board in 2.19.11.
+// The caller holds lcdMutex where it needs to; taking it again here would deadlock.
 static bool xptReadWith(int cs, uint8_t *d) {
   memset(d, 0, 8);
   d[0] = 0x91; d[2] = 0xB1; d[4] = 0xD1; d[6] = 0xC1; d[56] = 0x80;
   memcpy(&d[8], d, 8); memcpy(&d[16], d, 16); memcpy(&d[32], d, 24);
-  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
-  lcd.endWrite();
   lgfx::spi::beginTransaction(HSPI_HOST, TOUCH_SPI_HZ, 0);
   digitalWrite(cs, LOW);
   lgfx::spi::readBytes(HSPI_HOST, d, 57);
   digitalWrite(cs, HIGH);
   lgfx::spi::endTransaction(HSPI_HOST);
-  if (lcdMutex) xSemaphoreGive(lcdMutex);
   for (int i = 0; i < 8; i++)
     if (d[i] != 0x00 && d[i] != 0xFF) return true;   // something answered
   return false;
@@ -3087,6 +3085,8 @@ static const int CS_TRY[] = { 33, 4, 16, 17, 21, 22, 25, 32 };
 static void xptCsSweep(char *out, size_t n) {
   uint8_t d[57];
   int hit = -1;
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
   for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
     pinMode(CS_TRY[k], OUTPUT);
     digitalWrite(CS_TRY[k], HIGH);
@@ -3095,6 +3095,7 @@ static void xptCsSweep(char *out, size_t n) {
   }
   pinMode(PIN_TP_CS, OUTPUT);
   digitalWrite(PIN_TP_CS, HIGH);
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
   if (hit >= 0)
     snprintf(out, n, "cs%d ANSWERS %02X %02X %02X %02X", CS_TRY[hit], d[0], d[1], d[2], d[3]);
   else
@@ -3127,6 +3128,8 @@ static void xptReportSerial() {
   Serial.printf("touch probe: cs=%d miso=%d sclk=%d mosi=%d %u Hz, int pin %d reads %d\n",
                 PIN_TP_CS, PIN_LCD_MISO, PIN_LCD_SCLK, PIN_LCD_MOSI,
                 (unsigned)TOUCH_SPI_HZ, PIN_TP_INT, digitalRead(36));
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
   for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
     pinMode(CS_TRY[k], OUTPUT);
     digitalWrite(CS_TRY[k], HIGH);
@@ -3137,63 +3140,57 @@ static void xptReportSerial() {
   }
   pinMode(PIN_TP_CS, OUTPUT);
   digitalWrite(PIN_TP_CS, HIGH);
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  pin %d = %d\n", WATCH[k], digitalRead(WATCH[k]));
 
-  // Then the same read done by hand.
+  // Where does the chip's answer come back on?
   //
-  // Everything above goes through the SPI peripheral, the way LovyanGFX does it. The
-  // firmware these boards ship with uses TFT_eSPI, which drives the chip through the
-  // Arduino SPI library instead, and its touch demonstrably works on this exact board
-  // with this exact wiring. So the question is no longer which pins - it is whether our
-  // way of talking to them works here. Clocking the pins by hand answers that: if this
-  // returns real numbers while the peripheral returns zeros, the wiring is fine and the
-  // peripheral path is the bug.
+  // Nothing above ever moved the data line. The screen bus carries it on GPIO12, and
+  // that is the one thing every read so far had in common, so it is the one thing left
+  // to vary. The pin is not touched directly: the ESP32 routes a peripheral signal to a
+  // pin through its GPIO matrix, so pointing the bus input at a different pin and
+  // reading again costs nothing and cannot leave a pin stranded.
+  //
+  // The screen is deselected first and its bus is handed back exactly as it was, DMA
+  // channel included. Giving it back without the DMA channel is what froze the board
+  // twice: the bus came back without it and the next drawing wrote into nothing.
   {
-    const int sclk = PIN_LCD_SCLK, mosi = PIN_LCD_MOSI, miso = PIN_LCD_MISO;
-    uint16_t v[3];
-    static const uint8_t cmd[3] = { 0xD0, 0x90, 0xB0 };   // X, Y, pressure
-    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
-    pinMode(mosi, OUTPUT);
-    pinMode(miso, INPUT);
-    pinMode(PIN_TP_CS, OUTPUT);
-    for (int c = 0; c < 3; c++) {
-      uint32_t r = 0;
-      digitalWrite(PIN_TP_CS, LOW);
-      for (int i = 7; i >= 0; i--) {
-        digitalWrite(mosi, (cmd[c] >> i) & 1);
-        digitalWrite(sclk, HIGH); delayMicroseconds(3);
-        digitalWrite(sclk, LOW);  delayMicroseconds(3);
-      }
-      for (int i = 0; i < 16; i++) {
-        digitalWrite(sclk, HIGH); delayMicroseconds(3);
-        r = (r << 1) | (digitalRead(miso) ? 1 : 0);
-        digitalWrite(sclk, LOW);  delayMicroseconds(3);
-      }
-      digitalWrite(PIN_TP_CS, HIGH);
-      v[c] = (uint16_t)((r >> 3) & 0x0FFF);
-      delayMicroseconds(50);
+    static const int MISO_TRY[] = { PIN_LCD_MISO, 39, 35, 34 };
+    uint8_t d[57];
+    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+    lcd.endWrite();                    // let go of the screen before borrowing its bus
+    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
+      lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, 1);
+      bool got = xptReadWith(PIN_TP_CS, d);
+      Serial.printf("  answer on GPIO%-2d: %02X %02X %02X %02X %02X %02X %02X %02X  %s\n",
+                    MISO_TRY[k], d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
+                    got ? "<-- THE CHIP ANSWERS" : "");
     }
-    // hand the bus straight back before anything else can want it
-    lgfx::spi::init(HSPI_HOST, sclk, miso, mosi);
-    Serial.printf("  by hand on %d/%d/%d cs%d: x=%u y=%u z=%u  %s\n",
-                  sclk, mosi, miso, PIN_TP_CS, v[0], v[1], v[2],
-                  (v[0] || v[1] || v[2]) ? "<-- THE CHIP ANSWERS" : "(nothing)");
+    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, 1);
+    if (lcdMutex) xSemaphoreGive(lcdMutex);
+    Serial.println("  (bus handed back, DMA included)");
   }
 
-  // The data line last, because testing it borrows the pin from the screen's bus. Only
-  // GPIO12 is touched, and only as an input - the screen writes on 13/14/15/2 and never
-  // reads, so its picture does not depend on this one. The library puts it back after.
+  // Now the pull test, with the screen deselected so it cannot be the thing holding a
+  // line down. Last time it ran mid-transaction, which is very likely why GPIO12 looked
+  // held low: the screen itself was driving it.
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
   Serial.printf("  data line GPIO%d: %s\n", PIN_LCD_MISO, pinHeld(PIN_LCD_MISO));
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  spare GPIO%d: %s\n", WATCH[k], pinHeld(WATCH[k]));
-  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI);
-  Serial.println("  (data line handed back to the screen bus)");
+  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, 1);
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
+  Serial.println("  (data line handed back, DMA included)");
 }
 
 static void xptRawDump(char *out, size_t n) {
   uint8_t d[57];
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
   xptReadWith(PIN_TP_CS, d);
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
   snprintf(out, n, "cs%d %02X %02X %02X %02X %02X %02X %02X %02X", PIN_TP_CS,
            d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
 }
