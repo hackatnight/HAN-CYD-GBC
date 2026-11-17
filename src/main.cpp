@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.14"
+#define APP_VERSION "2.19.15"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3049,6 +3049,35 @@ static void xptProbeScan() {
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++) pinMode(WATCH[k], INPUT);
 }
 
+// Read the touch chip exactly the way LovyanGFX does - same SPI host, same frequency,
+// same 57-byte burst - but show the bytes instead of the verdict.
+//
+// The driver discards any sample outside 128..3968 and reports nothing unless three of
+// seven survive, so "no touch" covers two different faults: a chip saying nothing, and a
+// chip whose answers are being thrown away. Those need opposite fixes and guessing
+// between them has cost a whole evening. The bytes tell them apart: all 00 or all FF is
+// a chip that is not replying, anything else is a chip that is.
+//
+// This uses the library's own SPI calls on the bus it already owns - no pin is taken
+// away from the display, which is what wedged the board in 2.19.11.
+static void xptRawDump(char *out, size_t n) {
+  uint8_t d[57];
+  memset(d, 0, 8);
+  d[0] = 0x91; d[2] = 0xB1; d[4] = 0xD1; d[6] = 0xC1; d[56] = 0x80;
+  memcpy(&d[8], d, 8); memcpy(&d[16], d, 16); memcpy(&d[32], d, 24);
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
+  lgfx::spi::beginTransaction(HSPI_HOST, TOUCH_SPI_HZ, 0);
+  lgfx::gpio_lo(PIN_TP_CS);
+  lgfx::spi::readBytes(HSPI_HOST, d, 57);
+  lgfx::gpio_hi(PIN_TP_CS);
+  lgfx::spi::endTransaction(HSPI_HOST);
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
+  snprintf(out, n, "raw %02X %02X %02X %02X %02X %02X %02X %02X  y=%d x=%d",
+           d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
+           (d[1] << 8 | d[2]) >> 3, (d[5] << 8 | d[6]) >> 3);
+}
+
 // Live levels of those pins. One changing when the panel is pressed means the touch
 // circuit is alive, which is how GPIO36 was found.
 static void xptWatchDraw(int y) {
@@ -3100,6 +3129,12 @@ static void touchTest() {
       snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
       lcd.drawString(b, 8, 268);
       xptWatchDraw(132);
+      {
+        char raw[64];
+        xptRawDump(raw, sizeof raw);
+        lcd.setTextColor(C_TEXT, C_BG);
+        lcd.drawString(raw, 8, 150);
+      }
     }
 #endif
     delay(10);

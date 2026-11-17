@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-2432S024N (2.4\", no touch, Bluetooth controller)",
-  "version": "2.19.14",
+  "version": "2.19.15",
   "new_install_prompt_erase": true,
   "builds": [
     {
