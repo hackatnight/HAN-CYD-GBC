@@ -265,7 +265,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.22"
+#define APP_VERSION "2.19.23"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3176,6 +3176,7 @@ static void xptReportSerial() {
     uint8_t d[57];
     if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
     lcd.endWrite();                    // let go of the screen before borrowing its bus
+    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);   // and off the bus
     for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
       lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, BUS_DMA_CH);
       bool got = xptReadWith(PIN_TP_CS, d);
@@ -3188,11 +3189,56 @@ static void xptReportSerial() {
     Serial.println("  (bus handed back, DMA included)");
   }
 
+  // And the same read with no peripheral involved at all: four pins, clocked by hand.
+  //
+  // This was tried once before and returned zeros, which looked like proof the chip was
+  // unreachable. It proved nothing: it ran without taking lcdMutex and without ending
+  // the screen's transaction, so the screen's own chip select was very likely still low.
+  // A selected ILI9341 drives the same data line, and it would have swamped anything the
+  // touch chip said. Every zero measured that way is worthless.
+  //
+  // So: take the lock, end the transaction, and drive the screen's chip select high by
+  // hand before clocking anything, so there is exactly one chip on the bus.
+  {
+    const int sclk = PIN_LCD_SCLK, mosi = PIN_LCD_MOSI, miso = PIN_LCD_MISO;
+    static const uint8_t cmd[3] = { 0xD0, 0x90, 0xB0 };   // X, Y, pressure
+    uint16_t v[3];
+    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+    lcd.endWrite();
+    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);   // screen off the bus
+    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
+    pinMode(mosi, OUTPUT);
+    pinMode(miso, INPUT);
+    pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
+    for (int c = 0; c < 3; c++) {
+      uint32_t r = 0;
+      digitalWrite(PIN_TP_CS, LOW);
+      for (int i = 7; i >= 0; i--) {
+        digitalWrite(mosi, (cmd[c] >> i) & 1);
+        digitalWrite(sclk, HIGH); delayMicroseconds(3);
+        digitalWrite(sclk, LOW);  delayMicroseconds(3);
+      }
+      for (int i = 0; i < 16; i++) {
+        digitalWrite(sclk, HIGH); delayMicroseconds(3);
+        r = (r << 1) | (digitalRead(miso) ? 1 : 0);
+        digitalWrite(sclk, LOW);  delayMicroseconds(3);
+      }
+      digitalWrite(PIN_TP_CS, HIGH);
+      v[c] = (uint16_t)((r >> 3) & 0x0FFF);
+      delayMicroseconds(50);
+    }
+    lgfx::spi::init(HSPI_HOST, sclk, miso, mosi, BUS_DMA_CH);   // DMA included
+    if (lcdMutex) xSemaphoreGive(lcdMutex);
+    Serial.printf("  by hand, screen deselected: x=%u y=%u z=%u  %s\n", v[0], v[1], v[2],
+                  (v[0] || v[1] || v[2]) ? "<-- THE CHIP ANSWERS" : "(nothing)");
+  }
+
   // Now the pull test, with the screen deselected so it cannot be the thing holding a
   // line down. Last time it ran mid-transaction, which is very likely why GPIO12 looked
   // held low: the screen itself was driving it.
   if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
   lcd.endWrite();
+  pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);
   Serial.printf("  data line GPIO%d: %s\n", PIN_LCD_MISO, pinHeld(PIN_LCD_MISO));
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  spare GPIO%d: %s\n", WATCH[k], pinHeld(WATCH[k]));

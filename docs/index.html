@@ -81,7 +81,6 @@
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
-  .stock { border-top: 1px solid var(--hilite); padding-top: 12px; }
   .erase { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .erase input { width: 16px; height: 16px; }
   .boards details { margin-top: 2px; }
@@ -102,7 +101,7 @@
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.19.22. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.19.23. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -162,10 +161,6 @@
         <button class="btn small ghost" id="dl-untested">Download .bin</button>
       </div>
     </div>
-    <p class="pickfoot stock">Putting this board back to the firmware it came with:
-      <a href="https://flash.nmminer.com/" target="_blank" rel="noopener">flash.nmminer.com</a>
-      &rarr; device <code>elecrow-esp32-display-24inch</code>, version <code>v2.0.04</code>.
-      Their files cannot be flashed from this page: the browser refuses to read them across sites.</p>
     <label class="pickfoot erase"><input type="checkbox" id="eraseFirst"> Erase the whole flash first
       <span class="picknote">(wipes saved games and settings; leave off for an update)</span></label>
     <p class="pickfoot">Pick your board, then <strong>Flash now</strong>. What each board does and doesn't support is in
