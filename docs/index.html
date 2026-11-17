@@ -198,7 +198,7 @@
     // shows it twice more, and three hand-edited copies would drift the moment one
     // release updated only the one the release check knows about.
     document.addEventListener('DOMContentLoaded', () => {
-      const v = (document.body.innerText.match(/Version\s+([\d.]+)/) || [])[1] || '';
+      const v = (document.body.innerText.match(/Version\s+(\d+(?:\.\d+)*)/) || [])[1] || '';
       for (const id of ['verTitle', 'verFoot']) {
         const e = document.getElementById(id);
         if (e) e.textContent = v;
