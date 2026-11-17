@@ -81,6 +81,14 @@
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
+  .local { border-top: 1px solid var(--hilite); padding-top: 14px; }
+  .local .pickrow { margin-top: 8px; }
+  #localFiles { flex: 1 1 auto; min-width: 0; color: var(--dim); font: inherit; font-size: 14px; }
+  #localList { margin-top: 8px; display: grid; gap: 6px; }
+  #localList .f { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  #localList .f span { color: var(--dim); flex: 1 1 auto; }
+  #localList .f input { width: 110px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--hilite); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 14px; }
   .erase { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .erase input { width: 16px; height: 16px; }
   .boards details { margin-top: 2px; }
@@ -160,6 +168,15 @@
         <button class="btn small" id="fl-untested">Flash now</button>
         <button class="btn small ghost" id="dl-untested">Download .bin</button>
       </div>
+    </div>
+    <div class="pickfoot local">
+      <label for="localFiles"><strong>Or flash files from your computer</strong>
+        <span class="picknote">for a local build, or to put a board back to the firmware it came with</span></label>
+      <div class="pickrow">
+        <input type="file" id="localFiles" multiple accept=".bin">
+        <button class="btn small" id="fl-local" disabled>Flash files</button>
+      </div>
+      <div id="localList"></div>
     </div>
     <label class="pickfoot erase"><input type="checkbox" id="eraseFirst"> Erase the whole flash first
       <span class="picknote">(wipes saved games and settings; leave off for an update)</span></label>
@@ -606,7 +623,18 @@ const say = (t, cls) => window.hanSerial && window.hanSerial.state(t, cls);
 
 let busy = false;
 
-async function flash(sel, btn) {
+// esptool-js wants each image as a binary string, one character per byte - hand it a
+// Uint8Array and it fails inside writeFlash with "t.charCodeAt is not a function".
+// Built in chunks because String.fromCharCode is given one argument per byte and a
+// megabyte of them at once overflows the stack.
+function toBinaryString(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return out;
+}
+
+async function flash(getFiles, btn, title) {
   if (busy) return;
   busy = true;
   const was = btn.textContent;
@@ -618,20 +646,11 @@ async function flash(sel, btn) {
     // the monitor has to let go: the chip can only talk to one of us at a time
     if (window.hanSerial && window.hanSerial.isOpen()) await window.hanSerial.release();
 
-    const man = await (await fetch(sel.value, { cache: 'no-store' })).json();
-    const path = man.builds[0].parts[0].path;
-    log('\n--- ' + man.name + ' ' + man.version + ' ---\n');
-    log('reading ' + path + '\n');
-    const bytes = new Uint8Array(await (await fetch('firmware/' + path, { cache: 'no-store' })).arrayBuffer());
-    log(bytes.length.toLocaleString() + ' bytes\n');
-    // esptool-js wants the image as a binary string, one character per byte - hand it a
-    // Uint8Array and it fails inside writeFlash with "t.charCodeAt is not a function".
-    // Built in chunks because String.fromCharCode is given one argument per byte and a
-    // megabyte of them at once overflows the stack.
-    let data = '';
-    for (let i = 0; i < bytes.length; i += 0x8000)
-      data += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-
+    log('\n--- ' + title + ' ---\n');
+    const fileArray = await getFiles();
+    for (const f of fileArray)
+      log('0x' + f.address.toString(16).padStart(6, '0') + '  ' + f.name + '  ' +
+          f.data.length.toLocaleString() + ' bytes\n');
     const port = await navigator.serial.requestPort();
     transport = new Transport(port, true);
     const loader = new ESPLoader({
@@ -653,7 +672,7 @@ async function flash(sel, btn) {
     say('writing', '');
     let last = -1;
     await loader.writeFlash({
-      fileArray: [{ data, address: 0 }],
+      fileArray: fileArray.map((f) => ({ data: f.data, address: f.address })),
       flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
       eraseAll: false, compress: true,
       reportProgress: (i, written, total) => {
@@ -684,7 +703,63 @@ async function flash(sel, btn) {
 for (const id of ['tested', 'testing', 'untested']) {
   const sel = document.getElementById('sel-' + id);
   const btn = document.getElementById('fl-' + id);
-  if (sel && btn) btn.addEventListener('click', () => flash(sel, btn));
+  if (!sel || !btn) continue;
+  btn.addEventListener('click', async () => {
+    const man = await (await fetch(sel.value, { cache: 'no-store' })).json();
+    const path = man.builds[0].parts[0].path;
+    flash(async () => {
+      const bytes = new Uint8Array(await (await fetch('firmware/' + path, { cache: 'no-store' })).arrayBuffer());
+      return [{ name: path, address: 0, data: toBinaryString(bytes) }];
+    }, btn, man.name + ' ' + man.version);
+  });
+}
+
+// ---- files from the user's computer --------------------------------------
+// Where a .bin goes depends on what it is, and a firmware built by the usual tools
+// says so in its name. Guess from that and let it be corrected: get an address wrong
+// and the board will not boot, which is recoverable but not obvious.
+const LOCAL_AT = [
+  [/^bootloader/i, 0x1000], [/^partitions?(-table)?\b/i, 0x8000],
+  [/^(boot_app0|ota_data_initial)/i, 0xe000], [/^(littlefs|spiffs)/i, 0x39C000],
+  [/(merged|combined|HAN-CYD-GBC)/i, 0x0],
+];
+const picker = document.getElementById('localFiles');
+const localBtn = document.getElementById('fl-local');
+const localList = document.getElementById('localList');
+if (picker && localBtn) {
+  picker.addEventListener('change', () => {
+    localList.textContent = '';
+    const files = [...picker.files];
+    files.forEach((f) => {
+      let at = 0x10000;                              // an app image, unless the name says otherwise
+      for (const [re, a] of LOCAL_AT) if (re.test(f.name)) { at = a; break; }
+      const row = document.createElement('div');
+      row.className = 'f';
+      const box = document.createElement('input');
+      box.value = '0x' + at.toString(16);
+      box.setAttribute('aria-label', 'address for ' + f.name);
+      const name = document.createElement('span');
+      name.textContent = f.name + '  (' + f.size.toLocaleString() + ' bytes)';
+      row.append(box, name);
+      localList.append(row);
+    });
+    localBtn.disabled = files.length === 0;
+  });
+
+  localBtn.addEventListener('click', () => {
+    const files = [...picker.files];
+    const boxes = [...localList.querySelectorAll('input')];
+    flash(async () => {
+      const out = [];
+      for (let i = 0; i < files.length; i++) {
+        const bytes = new Uint8Array(await files[i].arrayBuffer());
+        out.push({ name: files[i].name, address: parseInt(boxes[i].value, 16) || 0,
+                   data: toBinaryString(bytes) });
+      }
+      out.sort((a, b) => a.address - b.address);
+      return out;
+    }, localBtn, files.length + ' file(s) from your computer');
+  });
 }
 
 if (!('serial' in navigator)) {
