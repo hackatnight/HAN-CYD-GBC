@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.15"
+#define APP_VERSION "2.19.16"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3060,22 +3060,52 @@ static void xptProbeScan() {
 //
 // This uses the library's own SPI calls on the bus it already owns - no pin is taken
 // away from the display, which is what wedged the board in 2.19.11.
-static void xptRawDump(char *out, size_t n) {
-  uint8_t d[57];
+static bool xptReadWith(int cs, uint8_t *d) {
   memset(d, 0, 8);
   d[0] = 0x91; d[2] = 0xB1; d[4] = 0xD1; d[6] = 0xC1; d[56] = 0x80;
   memcpy(&d[8], d, 8); memcpy(&d[16], d, 16); memcpy(&d[32], d, 24);
   if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
   lcd.endWrite();
   lgfx::spi::beginTransaction(HSPI_HOST, TOUCH_SPI_HZ, 0);
-  lgfx::gpio_lo(PIN_TP_CS);
+  digitalWrite(cs, LOW);
   lgfx::spi::readBytes(HSPI_HOST, d, 57);
-  lgfx::gpio_hi(PIN_TP_CS);
+  digitalWrite(cs, HIGH);
   lgfx::spi::endTransaction(HSPI_HOST);
   if (lcdMutex) xSemaphoreGive(lcdMutex);
-  snprintf(out, n, "raw %02X %02X %02X %02X %02X %02X %02X %02X  y=%d x=%d",
-           d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
-           (d[1] << 8 | d[2]) >> 3, (d[5] << 8 | d[6]) >> 3);
+  for (int i = 0; i < 8; i++)
+    if (d[i] != 0x00 && d[i] != 0xFF) return true;   // something answered
+  return false;
+}
+
+// All zeros on the data line means the chip is never selected, so chip select is the
+// thing to vary. The bus itself stays exactly as the library set it up - only these
+// candidate pins are driven, and none of them belongs to the screen, the SD card, the
+// speaker or the backlight, so nothing can be taken away from the display. That is what
+// wedged the board in 2.19.11, and it does not happen here.
+static const int CS_TRY[] = { 33, 4, 16, 17, 21, 22, 25, 32 };
+
+static void xptCsSweep(char *out, size_t n) {
+  uint8_t d[57];
+  int hit = -1;
+  for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
+    pinMode(CS_TRY[k], OUTPUT);
+    digitalWrite(CS_TRY[k], HIGH);
+    if (xptReadWith(CS_TRY[k], d) && hit < 0) hit = (int)k;
+    if (CS_TRY[k] != PIN_TP_CS) pinMode(CS_TRY[k], INPUT);   // give the pin back
+  }
+  pinMode(PIN_TP_CS, OUTPUT);
+  digitalWrite(PIN_TP_CS, HIGH);
+  if (hit >= 0)
+    snprintf(out, n, "cs%d ANSWERS %02X %02X %02X %02X", CS_TRY[hit], d[0], d[1], d[2], d[3]);
+  else
+    snprintf(out, n, "no cs answers (tried %d)", (int)(sizeof CS_TRY / sizeof *CS_TRY));
+}
+
+static void xptRawDump(char *out, size_t n) {
+  uint8_t d[57];
+  xptReadWith(PIN_TP_CS, d);
+  snprintf(out, n, "cs%d %02X %02X %02X %02X %02X %02X %02X %02X", PIN_TP_CS,
+           d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
 }
 
 // Live levels of those pins. One changing when the panel is pressed means the touch
@@ -3134,6 +3164,9 @@ static void touchTest() {
         xptRawDump(raw, sizeof raw);
         lcd.setTextColor(C_TEXT, C_BG);
         lcd.drawString(raw, 8, 150);
+        xptCsSweep(raw, sizeof raw);
+        lcd.setTextColor(strstr(raw, "ANSWERS") ? C_GREEN : C_DIM, C_BG);
+        lcd.drawString(raw, 8, 168);
       }
     }
 #endif
