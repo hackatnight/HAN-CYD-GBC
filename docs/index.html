@@ -111,7 +111,7 @@
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
-  .local { border-top: 1px solid var(--hilite); padding-top: 14px; }
+  .local { grid-column: 1 / -1; }
   .local .pickrow { margin-top: 8px; }
   #localFiles { flex: 1 1 100%; min-width: 0; color: var(--dim); font: inherit; font-size: 14px; }
   #localFiles::file-selector-button {
@@ -170,6 +170,25 @@
     justify-content: space-between; gap: 4px 12px;
   }
   @media (max-width: 560px) { body { padding: 0; } .win { border-left: 0; border-right: 0; } }
+
+  /* Every panel is a tool with its own title bar, the way each area of the site is:
+     a numbered label on the left, a status tag on the right. The negative margins pull
+     the bar out to the panel's edges, so it reads as a bar rather than a line of text -
+     which is why each panel kind repeats them to match its own padding. */
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: var(--strip); border-bottom: 1px solid var(--strip-border);
+    font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--dim);
+    padding: 6px 12px;
+  }
+  .warn > .card-head { margin: -14px -18px 14px; }
+  .pick > .card-head { margin: -14px -16px 12px; }
+  .serial > .card-head, .support > .card-head, .send > .card-head { margin: -18px -20px 16px; }
+  .tag { border: 1px solid var(--accent); color: var(--accent); padding: 1px 6px;
+         font-size: 9px; font-weight: 700; white-space: nowrap; letter-spacing: .3px; }
+  .tag-muted { border-color: var(--dim); color: var(--dim); }
+  .tag-danger { border-color: var(--danger); color: var(--danger); }
+  .tag-warn { border-color: var(--warn); color: var(--warn); }
 </style>
 </head>
 <body>
@@ -220,6 +239,7 @@
   </script>
 
   <div class="warn">
+    <div class="card-head"><span>01 // read me</span><span class="tag tag-warn">before you flash</span></div>
     <strong>Pick the build for your exact board</strong> (the model number is printed on the back). The
     ESP32-2432S024C (2.4", capacitive touch) is the main, tested board; the others are new and need testers.
     <strong>2.4":</strong> the last letter says the touch type: C = capacitive, R = resistive.
@@ -233,6 +253,7 @@
 
   <div class="builds">
     <div class="pick">
+      <div class="card-head"><span>02 // tested</span><span class="tag">ready</span></div>
       <div class="pickhead"><h2>Tested</h2><span class="picknote">confirmed on real hardware</span></div>
       <div class="pickrow">
         <select id="sel-tested" aria-label="Tested board">
@@ -244,6 +265,7 @@
       </div>
     </div>
     <div class="pick">
+      <div class="card-head"><span>03 // testing</span><span class="tag tag-warn">in progress</span></div>
       <div class="pickhead"><h2>Testing now</h2><span class="picknote">being worked on right now</span></div>
       <div class="pickrow">
         <select id="sel-testing" aria-label="Testing now board">
@@ -254,6 +276,7 @@
       </div>
     </div>
     <div class="pick">
+      <div class="card-head"><span>04 // untested</span><span class="tag tag-muted">needs testers</span></div>
       <div class="pickhead"><h2>Not tested</h2><span class="picknote">built in, nobody has tried it yet</span></div>
       <div class="pickrow">
         <select id="sel-untested" aria-label="Not tested board">
@@ -274,7 +297,8 @@
         <button class="btn small ghost" id="dl-untested">Download .bin</button>
       </div>
     </div>
-    <div class="pickfoot local">
+    <div class="pick local">
+      <div class="card-head"><span>05 // local files</span><span class="tag tag-muted">optional</span></div>
       <label for="localFiles"><strong>Or flash files from your computer</strong>
         <span class="picknote">for a local build, or to put a board back to the firmware it came with</span></label>
       <div class="pickrow">
@@ -290,6 +314,7 @@
   </div>
 
   <section class="serial" id="serial">
+    <div class="card-head"><span>06 // serial monitor</span><span class="tag">usb cable</span></div>
     <h2>Serial monitor</h2>
     <p class="sub">The board's log, live from its USB cable. Useful for reporting a problem: connect, reproduce it, then copy the text.</p>
     <div class="row">
@@ -316,7 +341,11 @@
       <code>HNX CALCLR</code>, <code>HNX RMDEMOS</code>, <code>HNX DEFAULTS</code>, <code>HNX REBOOT</code>
       or <code>HNX BYE</code> to leave.</p>
 
-    <h3 style="margin:18px 0 4px">Board tools</h3>
+  </section>
+
+  <section class="serial" id="tools">
+    <div class="card-head"><span>07 // board tools</span><span class="tag tag-danger">changes the board</span></div>
+    <h2>Board tools</h2>
     <p class="sub" style="margin:0 0 10px">For when the screen itself is the problem - an unreadable display
       setting, or a touch calibration that puts every tap in the wrong place. The board answers over the
       cable, and what it says appears in the log above.</p>
@@ -331,6 +360,7 @@
   </section>
 
   <section class="support" id="boards">
+    <div class="card-head"><span>08 // supported boards</span><span class="tag tag-muted">reference</span></div>
     <h2>Supported boards</h2>
     <p class="sub" style="color:var(--dim);margin:0 0 12px">What works on each build, and whether it has been tried on a real board.</p>
     <div class="tablewrap">
@@ -366,6 +396,7 @@
 
 
   <section class="send" id="send">
+    <div class="card-head"><span>09 // send games</span><span class="tag">usb cable</span></div>
     <h2>Send games over USB</h2>
     <p class="sub">Copy games to the board's SD card without taking the card out. Each game goes into
       <code>/Roms/GB</code>, <code>/Roms/GBC</code> or <code>/Roms/NES</code> by its file type, and nothing
