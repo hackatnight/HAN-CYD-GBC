@@ -167,6 +167,7 @@
 // the line was not brought out, and polled is not the same thing - the driver then has
 // to decide from pressure alone whether a press is real, and on this board it never did.
 #define TP_INT_PIN 36
+#define TOUCH_SPI_HZ 600000   // see TOUCH_SPI_HZ below: this panel will not read faster
 #define HAS_LED 0          // no RGB LED; GPIO16/17 go to the UART1 connector
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
@@ -228,6 +229,16 @@
 #define PIN_TP_INT   36
 #elif TOUCH_KIND == TOUCH_XPT_BUS
 #define PIN_TP_CS    33   // on the screen's bus (14 / 13 / 12)
+// How fast to clock the touch chip. 2.5 MHz is the usual figure for an XPT2046 and is
+// what the other boards use, but Elecrow's own setup for these panels clocks it at
+// 600 kHz, and NMMiner - the firmware these boards ship with, whose touch works - had
+// to put out a release fixing its touch driver for exactly the 2.4 and 2.8 inch Elecrow
+// boards. A resistive panel needs time to settle, and this one evidently needs more
+// than most: too fast and every sample is noise, which the driver quietly discards,
+// leaving a touch chip that interrupts correctly and reads nothing.
+#ifndef TOUCH_SPI_HZ
+#define TOUCH_SPI_HZ 2500000
+#endif
 #ifdef TP_INT_PIN
 #define PIN_TP_INT   TP_INT_PIN
 #else
@@ -251,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.13"
+#define APP_VERSION "2.19.14"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -369,7 +380,7 @@ public:
 #else
       c.bus_shared = true;      // on the screen's bus: reads pause the screen transfer
       c.spi_host = HSPI_HOST;
-      c.freq = 2500000;
+      c.freq = TOUCH_SPI_HZ;
       c.pin_sclk = PIN_LCD_SCLK;
       c.pin_mosi = PIN_LCD_MOSI;
       c.pin_miso = PIN_LCD_MISO;
