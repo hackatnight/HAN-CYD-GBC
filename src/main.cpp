@@ -194,6 +194,9 @@
 #error "Boards with no touch screen need the Bluetooth build"
 #endif
 #define TOUCH_RESISTIVE (TOUCH_KIND == TOUCH_XPT_OWN || TOUCH_KIND == TOUCH_XPT_BUS)
+// The screen's SPI DMA channel, 0 for none. See the bus setup for why a shared touch
+// chip rules it out.
+#define BUS_DMA_CH (TOUCH_KIND == TOUCH_XPT_BUS ? 0 : 1)
 // Ask for a touch calibration at the first start (where the touch layer isn't known to
 // line up with the screen out of the box)
 #define TOUCH_ASK_CAL (TOUCH_RESISTIVE || TOUCH_KIND == TOUCH_I2C_ANY || CAL_AT_START)
@@ -262,7 +265,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.21"
+#define APP_VERSION "2.19.22"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -313,7 +316,19 @@ public:
       c.freq_read = 16000000;
       c.spi_3wire = false;
       c.use_lock = true;
-      c.dma_channel = 1;
+      // DMA off where the touch chip shares this bus.
+      //
+      // With a DMA channel attached, a transfer's data comes from the DMA descriptors,
+      // not from the peripheral's own FIFO registers - and the touch driver talks to the
+      // chip by writing those registers directly. So the command bytes never reach the
+      // chip, it never answers, and every read comes back as zeros no matter which chip
+      // select or data pin is used. That is exactly what this board does. The firmware it
+      // ships with reads the same chip on the same pins through the Arduino SPI library,
+      // which does not use DMA for transfers this small.
+      //
+      // The screen loses DMA on these boards and draws a little slower for it. Boards
+      // whose touch is on its own pins or on I2C keep it.
+      c.dma_channel = BUS_DMA_CH;
       c.pin_sclk = PIN_LCD_SCLK;
       c.pin_mosi = PIN_LCD_MOSI;
       c.pin_miso = PIN_LCD_MISO;
@@ -3128,6 +3143,7 @@ static void xptReportSerial() {
   Serial.printf("touch probe: cs=%d miso=%d sclk=%d mosi=%d %u Hz, int pin %d reads %d\n",
                 PIN_TP_CS, PIN_LCD_MISO, PIN_LCD_SCLK, PIN_LCD_MOSI,
                 (unsigned)TOUCH_SPI_HZ, PIN_TP_INT, digitalRead(36));
+  Serial.printf("  screen bus DMA channel: %d\n", BUS_DMA_CH);
   if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
   lcd.endWrite();
   for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
@@ -3161,13 +3177,13 @@ static void xptReportSerial() {
     if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
     lcd.endWrite();                    // let go of the screen before borrowing its bus
     for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
-      lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, 1);
+      lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, BUS_DMA_CH);
       bool got = xptReadWith(PIN_TP_CS, d);
       Serial.printf("  answer on GPIO%-2d: %02X %02X %02X %02X %02X %02X %02X %02X  %s\n",
                     MISO_TRY[k], d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
                     got ? "<-- THE CHIP ANSWERS" : "");
     }
-    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, 1);
+    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
     if (lcdMutex) xSemaphoreGive(lcdMutex);
     Serial.println("  (bus handed back, DMA included)");
   }
@@ -3180,7 +3196,7 @@ static void xptReportSerial() {
   Serial.printf("  data line GPIO%d: %s\n", PIN_LCD_MISO, pinHeld(PIN_LCD_MISO));
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  spare GPIO%d: %s\n", WATCH[k], pinHeld(WATCH[k]));
-  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, 1);
+  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
   if (lcdMutex) xSemaphoreGive(lcdMutex);
   Serial.println("  (data line handed back, DMA included)");
 }
