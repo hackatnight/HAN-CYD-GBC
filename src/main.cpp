@@ -3234,43 +3234,14 @@ static void xptReportSerial() {
     digitalWrite(PIN_LCD_MISO, LOW);  delayMicroseconds(400);
     int lo = digitalRead(PIN_LCD_MISO);
     pinMode(PIN_LCD_MISO, INPUT);
-    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
+    // deliberately not handing this pin back to the SPI peripheral. The screen only
+    // writes and never reads it, so leaving it a plain input costs nothing - and every
+    // attempt to hand this bus back has been what froze the board.
     if (lcdMutex) xSemaphoreGive(lcdMutex);
     Serial.printf("  driving GPIO%d: high reads %d, low reads %d  -> %s\n",
                   PIN_LCD_MISO, hi, lo,
                   hi ? "the line is free; nothing is driving it"
                      : "the line is tied low in hardware");
-  }
-
-  // And the data pins again, this time done properly.
-  //
-  // This sweep ran once before and found nothing, but it ran without taking the screen
-  // off the bus, so a selected display could have been holding the line the whole time.
-  // Through the Arduino library, which has now proved it does not upset anything.
-  {
-    static const int MISO_TRY[] = { 12, 39, 35, 34 };
-    static const uint8_t seq[8] = { 0x91, 0, 0xB1, 0, 0xD1, 0, 0xC1, 0 };
-    uint8_t d[8];
-    SPIClass sw(HSPI);
-    Serial.println("  data pin sweep, screen deselected:");
-    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
-    lcd.endWrite();
-    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);
-    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
-      sw.begin(PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, -1);
-      sw.beginTransaction(SPISettings(TOUCH_SPI_HZ, MSBFIRST, SPI_MODE0));
-      digitalWrite(PIN_TP_CS, LOW);
-      for (int i = 0; i < 8; i++) d[i] = sw.transfer(seq[i]);
-      digitalWrite(PIN_TP_CS, HIGH);
-      sw.endTransaction();
-      sw.end();
-      bool got = false;
-      for (int i = 0; i < 8; i++) if (d[i] != 0x00 && d[i] != 0xFF) got = true;
-      Serial.printf("    in%-3d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", MISO_TRY[k],
-                    d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], got ? "<-- ANSWERS" : "");
-    }
-    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
-    if (lcdMutex) xSemaphoreGive(lcdMutex);
   }
 
   // One arrangement never tested: the touch chip on the SD card's bus.
@@ -3310,9 +3281,10 @@ static void xptReportSerial() {
   Serial.printf("  data line GPIO%d: %s\n", PIN_LCD_MISO, pinHeld(PIN_LCD_MISO));
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  spare GPIO%d: %s\n", WATCH[k], pinHeld(WATCH[k]));
-  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
+  // No bus hand-back here either, for the same reason: the screen writes and never
+  // reads this pin, so leaving it an input costs nothing, and handing the bus back is
+  // what has frozen this board every time.
   if (lcdMutex) xSemaphoreGive(lcdMutex);
-  Serial.println("  (data line handed back, DMA included)");
 }
 
 static void xptRawDump(char *out, size_t n) {
