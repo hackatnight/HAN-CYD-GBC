@@ -39,8 +39,11 @@ BT_MAX=1179648      # app0 in partitions.csv:       0x120000
 TOUCH_MAX=720896    # app0 in partitions_touch.csv: 0x0B0000
 
 # key                  board flag      ("-" for the plain Bluetooth build)
-# Boards in hand or waiting on a test result. Add a key here when a board arrives,
-# and take it out again when nobody is testing it any more.
+# The two boards being developed side by side, and nothing else:
+#   ESP32-2432S024C  - the known-good board, which needs two images: BT and touch-only
+#   CrowPanel-2.4-2.8 - the Elecrow 2.4" Solo Miner (SKU DHM04624D)
+# That is three keys for two boards. Add a key when a board arrives and take it out
+# again when nobody is testing it, so a build never churns images nobody can check.
 ACTIVE="BT touch CrowPanel-2.4-2.8"
 
 BUILDS="
