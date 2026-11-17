@@ -289,10 +289,13 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.23.0"
+#define APP_VERSION "2.24.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
+// Game volume steps, 0 = mute. Four was too coarse to find a comfortable level on a
+// small speaker: the gap between 1 and 2 was most of the usable range.
+#define VOL_MAX 10
 // Sound waiting to be played, in 128-sample buffers (8 = 46 ms). Raising this hides
 // stutters, but the RAM comes out of the pages a big ROM keeps on hand while streaming
 // from the SD card, and 4 MB games slowed badly for it. Fix the stalls instead.
@@ -542,6 +545,7 @@ struct Settings {
   // menu music (its own volume, separate from the games)
   uint8_t musicOn = 1;
   uint8_t musicTune = 0;   // see TUNES
+  uint8_t idleMin = 5;     // screensaver after this many idle minutes (0 = never)
   uint8_t musicVol = 1;    // 1..4
 };
 static Settings cfg;
@@ -550,6 +554,8 @@ static Preferences prefs;
 static void loadSettings() {
   prefs.begin("gbc", true);
   cfg.volume = prefs.getUChar("vol", cfg.volume);
+  if (cfg.volume && cfg.volume <= 4 && !prefs.getUChar("vol10", 0)) cfg.volume = cfg.volume * VOL_MAX / 4;
+  if (cfg.volume > VOL_MAX) cfg.volume = VOL_MAX;
   cfg.scale = prefs.getUChar("scale", cfg.scale);
   cfg.scaleLand = prefs.getUChar("scaleL", cfg.scaleLand);
   cfg.showFps = prefs.getUChar("fps", cfg.showFps);
@@ -587,6 +593,7 @@ static void loadSettings() {
   cfg.ledFlashCheat = prefs.getUChar("ledfc", cfg.ledFlashCheat);
   cfg.musicOn = prefs.getUChar("mus", cfg.musicOn);
   cfg.musicTune = prefs.getUChar("mtun", cfg.musicTune);
+  cfg.idleMin = prefs.getUChar("idle", cfg.idleMin);
   cfg.musicVol = constrain(prefs.getUChar("mvol", cfg.musicVol), 1, 4);
 
   prefs.end();
@@ -595,6 +602,7 @@ static void loadSettings() {
 static void saveSettings() {
   prefs.begin("gbc", false);
   prefs.putUChar("vol", cfg.volume);
+  prefs.putUChar("vol10", 1);   // this value is on the 0..VOL_MAX scale
   prefs.putUChar("scale", cfg.scale);
   prefs.putUChar("scaleL", cfg.scaleLand);
   prefs.putUChar("fps", cfg.showFps);
@@ -626,6 +634,7 @@ static void saveSettings() {
   prefs.putUChar("ledfc", cfg.ledFlashCheat);
   prefs.putUChar("mus", cfg.musicOn);
   prefs.putUChar("mtun", cfg.musicTune);
+  prefs.putUChar("idle", cfg.idleMin);
   prefs.putUChar("mvol", cfg.musicVol);
 
   prefs.end();
@@ -805,6 +814,11 @@ static int bootNav() {
   return now - bootBtnT0 >= 600 ? NAV_OK : NAV_DOWN;
 }
 
+// How long since the last touch, button or controller press. The screensaver waits on
+// this; everything that counts as "someone is there" pokes it.
+static uint32_t idleAt = 0;
+static inline void idlePoke() { idleAt = millis(); }
+
 static int btNav() {
   static uint8_t last = 0xFF;   // 0xFF: ignore whatever is held when a menu opens
   static bool lastSys = true;
@@ -932,6 +946,7 @@ static bool readTouch(int &x, int &y) {
   panelToScreen(px, py, sx, sy);
   x = constrain((int)lroundf(sx), 0, SCR_W - 1);
   y = constrain((int)lroundf(sy), 0, SCR_H - 1);
+  idlePoke();
   return true;
 }
 
@@ -1648,6 +1663,57 @@ static void loaderProgress(const char *label, int pct) {
 
 static void loaderEnd() { wfFree(loadFb); hdrOn = false; }
 
+// Screensaver: the loading screen's wireframe H@N, after a quiet spell.
+//
+// It runs in the menus and the game list, never during a game - a game has its own
+// picture to show, and interrupting it would be a bug rather than a feature. Any touch,
+// BOOT press or controller button ends it, and the press that wakes it is swallowed so
+// it does not also pick whatever was under it.
+static const uint8_t IDLE_CHOICES[] = { 0, 1, 5, 10 };   // minutes; 0 = never
+
+static String idleName() {
+  return cfg.idleMin ? String(cfg.idleMin) + " min" : String("Never");
+}
+
+static void idleCycle() {
+  unsigned k = 0;
+  while (k < sizeof IDLE_CHOICES && IDLE_CHOICES[k] != cfg.idleMin) k++;
+  cfg.idleMin = IDLE_CHOICES[(k + 1) % (sizeof IDLE_CHOICES)];
+}
+
+// Returns true if it ran, so the caller knows to redraw what was underneath.
+static bool screensaverIfIdle() {
+  if (!cfg.idleMin) return false;
+  if (millis() - idleAt < (uint32_t)cfg.idleMin * 60000UL) return false;
+  WireFb f;
+  wfAlloc(f, 0, 0, SCR_W, SCR_H);
+  if (!f.px) { idlePoke(); return false; }   // no RAM for it: leave the screen alone
+  bool hdrWas = hdrOn;
+  hdrOn = false;                             // keep uiTick's header stars off it
+  lcd.fillScreen(C_BG);
+  uint32_t t0 = millis(), last = 0;
+  int x, y;
+  while (!readTouch(x, y) && btNav() == NAV_NONE && !bootRaw()) {
+    uint32_t now = millis();
+    if (now - last >= 40) {
+      last = now;
+      float t = (now - t0) / 1000.0f;
+      wfClear(f);
+      wfPalette(f, 0);
+      float hPx = min(f.h * 0.5f, f.w * 0.8f / (WIRE_LOGO_ASPECT / 256.0f));
+      wfLogo(f, f.w / 2.0f, f.h / 2.0f, hPx, sinf(t * 1.4f) * 0.9f, sinf(t * 1.0f) * 0.35f, 6.0f);
+      wfPush(f);
+    }
+    delay(5);
+  }
+  wfFree(f);
+  hdrOn = hdrWas;
+  while (readTouch(x, y)) delay(10);   // swallow the waking tap
+  while (bootRaw()) delay(10);
+  idlePoke();
+  return true;
+}
+
 static void uiMessage(const char *line1, const char *line2 = nullptr, uint16_t color = C_TEXT) {
   lcd.fillRect(0, 120, SCR_W, 80, C_BG);
   lcd.setFont(&fonts::Font2);
@@ -1657,6 +1723,8 @@ static void uiMessage(const char *line1, const char *line2 = nullptr, uint16_t c
   if (line2) { lcd.setTextColor(C_DIM, C_BG); lcd.drawString(line2, SCR_W / 2, 170); }
   lcd.setTextDatum(top_left);
 }
+
+static void musicStart();   // defined below; the error screen keeps the tune going
 
 extern "C" void gb_fatal(const char *file, int line, const char *fmt, ...) {
   char msg[160];
@@ -1678,6 +1746,7 @@ extern "C" void gb_fatal(const char *file, int line, const char *fmt, ...) {
   lcd.setTextColor(C_DIM, C_BG);
   lcd.setCursor(8, SCR_H - 40);
   lcd.print("Tap to restart");
+  musicStart();   // an error screen is no reason for silence
   int x, y;
   waitTap(x, y);
   esp_restart();
@@ -1895,13 +1964,13 @@ static void musicStop() {
 
 extern "C" void gb_audio_out(const uint8_t *s, int n) {
   if (!audioRunning || cfg.volume == 0) return;
-  int vol = cfg.volume;  // 1..4
+  int vol = cfg.volume;  // 1..VOL_MAX
   int v = 0x80;
   size_t w;
   while (n > 0) {
     int k = min(n, 128);
     for (int i = 0; i < k; i++) {
-      v = ((int)s[i] - 128) * vol / 4 + 128;
+      v = ((int)s[i] - 128) * vol / VOL_MAX + 128;
       uint16_t o = (uint16_t)(v << 8);
       audioBuf[i * 2] = o;
       audioBuf[i * 2 + 1] = o;
@@ -3063,7 +3132,7 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
       continue;
     }
     int navEv = btNav();
-    if (navEv != NAV_NONE) menuByPad = true;
+    if (navEv != NAV_NONE) { menuByPad = true; idlePoke(); }
     switch (navEv) {
       case NAV_UP:   { int o = sel; sel = sel <= 0 ? n - 1 : sel - 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
       case NAV_DOWN: { int o = sel; sel = (sel < 0 || sel >= n - 1) ? 0 : sel + 1; if (keepVisible()) drawAll(); else { drawRow(o); drawRow(sel); } break; }
@@ -3074,6 +3143,12 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
     }
     marqueeRotate();
     uiTick();
+    if (screensaverIfIdle()) {
+      lcd.fillScreen(C_BG);
+      uiHeader(title, headerBtn);
+      headerHints(title, SCR_W - 68, "OK", nullptr);
+      drawAll();
+    }
     delay(10);
   }
 }
@@ -4167,7 +4242,7 @@ static void sysInfoScreen() {
 static void settingsMenu() {
   while (true) {
     std::vector<MenuItem> it = {
-      { "Game volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
+      { "Game volume", cfg.volume ? String(cfg.volume) + "/" + String(VOL_MAX) : String("Mute") },
       { "Music", cfg.musicOn ? String(TUNES[cfg.musicTune % NUM_TUNES].name) : String("Off") },
       { "Scaling", scaleName() },
       { "DMG palette", DMG_PALETTE_NAMES[cfg.dmgPalette % NUM_DMG_PALETTES] },
@@ -4179,6 +4254,7 @@ static void settingsMenu() {
       { "Display & touch", ">" },
       { "Transfer games (USB)", ">" },
       { "System info", ">" },   // board, chip, pins - and the same list over serial
+      { "Screensaver", idleName() },
 #if HAVE_BT
       { "Controller (Bluetooth)", btCount() ? String(btCount()) + " connected" : String(">") },
 #endif
@@ -4194,7 +4270,7 @@ static void settingsMenu() {
     switch (i) {
       case -3:
       case -1: saveSettings(); return;
-      case 0: cfg.volume = (cfg.volume + 1) % 5; break;
+      case 0: cfg.volume = (cfg.volume + 1) % (VOL_MAX + 1); break;
       case 1: musicMenu(); break;
       case 2: curScale() = (curScale() + 1) % NUM_SCALES; break;
       case 3: cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; break;
@@ -4206,7 +4282,8 @@ static void settingsMenu() {
       case 9: displayTouchMenu(); break;
       case 10: xferMode(false); break;
       case 11: sysInfoScreen(); break;
-      case 12: controllerMenu(); break;
+      case 12: idleCycle(); break;
+      case 13: controllerMenu(); break;
     }
     applyDisplaySettings(false);
     saveSettings();
@@ -4712,7 +4789,7 @@ static PauseResult pauseMenu() {
       { "Favorite", isFav ? "Yes" : "No" },
       { "Write battery save", sram ? String(sram / 1024) + "KB" + (gb_sram_slots() < gb_sram_pages() ? " (paged)" : "")
                                    : String("n/a") },
-      { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
+      { "Volume", cfg.volume ? String(cfg.volume) + "/" + String(VOL_MAX) : String("Mute") },
       { "Scaling", scaleName() },
       { "DMG palette", gb_is_cgb() ? "GBC game" : DMG_PALETTE_NAMES[cfg.dmgPalette % NUM_DMG_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
@@ -4765,7 +4842,7 @@ static PauseResult pauseMenu() {
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 6: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 6: cfg.volume = (cfg.volume + 1) % (VOL_MAX + 1); saveSettings(); break;
       case 7: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
       case 8:
         if (!gb_is_cgb()) { cfg.dmgPalette = (cfg.dmgPalette + 1) % NUM_DMG_PALETTES; lcd_set_dmg_palette(DMG_PALETTES[cfg.dmgPalette]); saveSettings(); }
@@ -5120,7 +5197,7 @@ static PauseResult nesPauseMenu(const char *title) {
       { "Cheats", cheatsLabel() },
       { "Favorite", isFav ? "Yes" : "No" },
       { "Write battery save", sram ? String(sram / 1024) + "KB" : String("n/a") },
-      { "Volume", cfg.volume ? String(cfg.volume) + "/4" : String("Mute") },
+      { "Volume", cfg.volume ? String(cfg.volume) + "/" + String(VOL_MAX) : String("Mute") },
       { "Scaling", scaleName() },
       { "NES palette", NES_PALETTE_NAMES[cfg.nesPalette % NES_NUM_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
@@ -5169,7 +5246,7 @@ static PauseResult nesPauseMenu(const char *title) {
           int x, y; waitTap(x, y, 4000);
         }
         break;
-      case 6: cfg.volume = (cfg.volume + 1) % 5; saveSettings(); break;
+      case 6: cfg.volume = (cfg.volume + 1) % (VOL_MAX + 1); saveSettings(); break;
       case 7: curScale() = (curScale() + 1) % NUM_SCALES; saveSettings(); break;
       case 8:
         cfg.nesPalette = (cfg.nesPalette + 1) % NES_NUM_PALETTES;
@@ -5814,7 +5891,7 @@ static int runBrowserLoop() {
     if ((pairBannerH() > 0) != bannerWas) return -4;   // controller came or went: redraw
     // controller: d-pad moves, A/Start opens, B goes up a folder, Select opens Setup
     int ev = btNav();
-    if (ev != NAV_NONE) browserByPad = true;
+    if (ev != NAV_NONE) { browserByPad = true; idlePoke(); }
     if (ev == NAV_OK && navFromStart) return -1;   // Options: Setup
     if (ev == NAV_SELECT && sdOk && azNeeded()) {   // Select: A-Z
       browserByPad = true;
@@ -5860,6 +5937,7 @@ static int runBrowserLoop() {
     }
     if (!readTouch(x, y)) {
       if (sdOk && !roms.empty()) { browserMarqueeRotate(); uiTick(); }
+      if (screensaverIfIdle()) drawBrowser();
       delay(10);
       continue;
     }
@@ -5996,6 +6074,7 @@ void setup() {
 
   audioInit();
   musicInit();
+  musicStart();   // from here on there is music: no card, a bad card or an error does not stop it
   if (cfg.btEnabled) btInit();   // Bluetooth off: don't start it at all (frees its RAM)
 #if TOUCH_KIND == TOUCH_NONE
   if (bootHeldAtStart) btForgetAll();   // BOOT held at power-up: also forget controllers
