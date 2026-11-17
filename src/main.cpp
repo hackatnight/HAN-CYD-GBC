@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.16"
+#define APP_VERSION "2.19.17"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3101,6 +3101,28 @@ static void xptCsSweep(char *out, size_t n) {
     snprintf(out, n, "no cs answers (tried %d)", (int)(sizeof CS_TRY / sizeof *CS_TRY));
 }
 
+// The same findings on the serial log, where they can be copied instead of
+// photographed. One line per candidate, with the interrupt state alongside, so a
+// report says what the chip did rather than what the screen managed to show.
+static void xptReportSerial() {
+  uint8_t d[57];
+  Serial.printf("touch probe: cs=%d miso=%d sclk=%d mosi=%d %u Hz, int pin %d reads %d\n",
+                PIN_TP_CS, PIN_LCD_MISO, PIN_LCD_SCLK, PIN_LCD_MOSI,
+                (unsigned)TOUCH_SPI_HZ, PIN_TP_INT, digitalRead(36));
+  for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
+    pinMode(CS_TRY[k], OUTPUT);
+    digitalWrite(CS_TRY[k], HIGH);
+    bool got = xptReadWith(CS_TRY[k], d);
+    Serial.printf("  cs%-3d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", CS_TRY[k],
+                  d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], got ? "<-- answers" : "");
+    if (CS_TRY[k] != PIN_TP_CS) pinMode(CS_TRY[k], INPUT);
+  }
+  pinMode(PIN_TP_CS, OUTPUT);
+  digitalWrite(PIN_TP_CS, HIGH);
+  for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
+    Serial.printf("  pin %d = %d\n", WATCH[k], digitalRead(WATCH[k]));
+}
+
 static void xptRawDump(char *out, size_t n) {
   uint8_t d[57];
   xptReadWith(PIN_TP_CS, d);
@@ -3131,7 +3153,9 @@ static void touchTest() {
   lcd.drawString("Calibrate touch. BOOT/B = exit.", 8, 76);
 #if TOUCH_KIND == TOUCH_XPT_BUS
   xptProbeScan();
+  xptReportSerial();   // also on the serial log, for copying into a bug report
   lcd.drawString("36 should go 1 -> 0 when pressed:", 8, 114);
+  lcd.drawString("full report on the serial monitor", 8, 186);
 #endif
   for (int i = 0; i < 4; i++) {
     int cx = (i & 1) ? SCR_W - 20 : 20, cy = (i & 2) ? SCR_H - 20 : 110;

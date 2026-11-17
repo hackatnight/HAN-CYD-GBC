@@ -71,13 +71,33 @@
   table.boards td:first-child, table.boards th:first-child { text-align: left; }
   table.boards td small { color: var(--dim); }
   .y { color: #5fd35f; font-weight: 700; } .n { color: #ff5c5c; font-weight: 700; } .u { color: #e8c35a; font-weight: 700; }
+  .pick { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 14px 16px; }
+  .pickhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
+  .pickhead h2 { margin: 0; font-size: 19px; }
+  .picknote { color: var(--dim); font-size: 13px; }
+  .pickrow { display: flex; gap: 10px; align-items: center; }
+  .pickrow select { flex: 1 1 auto; min-width: 0; }
+  .btn.small { padding: 7px 12px; font-size: 14px; white-space: nowrap; }
+  .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
+  .boards details { margin-top: 2px; }
+  .boards summary { color: var(--dim); font-size: 13px; cursor: pointer; font-weight: normal; }
+  .boards details ul { margin: 6px 0 2px; padding-left: 18px; color: var(--dim); font-size: 13px; font-weight: normal; }
+  .serial { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 18px 20px; margin: 28px 0; }
+  .serial h2 { margin: 0 0 4px; font-size: 22px; }
+  .serial .sub { color: var(--dim); margin: 0 0 14px; }
+  #serialLog { background: #0a1018; border: 1px solid var(--hilite); border-radius: 8px; height: 260px; overflow: auto;
+    margin: 12px 0 0; padding: 10px 12px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #cfe3d4; white-space: pre-wrap; word-break: break-word; }
+  #serialState { color: var(--dim); }
+  #serialState.on { color: #8fd08f; }
+  #serialState.err { color: var(--warn); }
   .legend { color: var(--dim); font-size: 14px; margin: 10px 0 0; }
 </style>
 </head>
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.19.16. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.19.17. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -95,223 +115,59 @@
   </div>
 
   <div class="builds">
-    <div class="card">
-      <h2>Bluetooth</h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S024C (2.4")</p>
-      <ul>
-        <li>Pairs PS4, PS5, Xbox, Switch Pro, 8BitDo and more</li>
-        <li>Landscape by default; touch works too</li>
-        <li>2.8 MB of flash for games</li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-BT.json">
-        <button slot="activate">Install Bluetooth build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
+    <div class="pick">
+      <div class="pickhead"><h2>Tested</h2><span class="picknote">confirmed on real hardware</span></div>
+      <div class="pickrow">
+        <select id="sel-tested" aria-label="Tested board">
+          <option value="firmware/manifest-BT.json">ESP32-2432S024C (2.4&quot;) - Bluetooth</option>
+          <option value="firmware/manifest-touch.json">ESP32-2432S024C (2.4&quot;) - Touch only</option>
+        </select>
+        <esp-web-install-button id="fl-tested" manifest="firmware/manifest-BT.json">
+          <button slot="activate" class="btn small">Flash now</button>
+          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Needs https.</span>
+        </esp-web-install-button>
+      </div>
     </div>
-    <div class="card">
-      <h2>Touch only</h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S024C (2.4")</p>
-      <ul>
-        <li>On-screen buttons, portrait</li>
-        <li>No Bluetooth</li>
-        <li>3.25 MB of flash for games</li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-touch.json">
-        <button slot="activate">Install touch-only build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
+    <div class="pick">
+      <div class="pickhead"><h2>Testing now</h2><span class="picknote">being worked on right now</span></div>
+      <div class="pickrow">
+        <select id="sel-testing" aria-label="Testing now board">
+          <option value="firmware/manifest-CrowPanel-2.4-2.8.json">Elecrow CrowPanel ESP32 HMI 2.4&quot; or 2.8&quot; - CrowPanel 2.4&quot; / 2.8&quot;</option>
+        </select>
+        <esp-web-install-button id="fl-testing" manifest="firmware/manifest-CrowPanel-2.4-2.8.json">
+          <button slot="activate" class="btn small">Flash now</button>
+          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Needs https.</span>
+        </esp-web-install-button>
+      </div>
     </div>
-    <div class="card">
-      <h2>CrowPanel 2.4" / 2.8" <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">Elecrow CrowPanel ESP32 HMI 2.4" or 2.8" (DIS03024H), and the same board sold as the ESP32 Solo Miner LCD (DHM04624D)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li>PS4 and Stadia controllers, games and sound confirmed on the board sold as the Solo Miner (DHM04624D)</li>
-        <li>That board’s touch screen does not answer on any wiring: play it with a controller, and use BOOT for the menus if you have none</li>
-        <li>No LED settings (this board has no RGB LED)</li>
-        <li>Overwrites the mining firmware if your board came with it</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-CrowPanel-2.4-2.8.json">
-        <button slot="activate">Install CrowPanel build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
+    <div class="pick">
+      <div class="pickhead"><h2>Not tested</h2><span class="picknote">built in, nobody has tried it yet</span></div>
+      <div class="pickrow">
+        <select id="sel-untested" aria-label="Not tested board">
+          <option value="firmware/manifest-2432S024R.json">ESP32-2432S024R (2.4&quot; - 2.4&quot; resistive</option>
+          <option value="firmware/manifest-2432S028R.json">ESP32-2432S028R (2.8&quot; - 2.8&quot; CYD</option>
+          <option value="firmware/manifest-2432S028-2USB.json">ESP32-2432S028 with two USB ports (micro-USB + USB-C) - 2.8&quot; CYD2USB</option>
+          <option value="firmware/manifest-2432S028C.json">ESP32-2432S028C (2.8&quot; - 2.8&quot; capacitive</option>
+          <option value="firmware/manifest-2432S028R-Plus.json">ESP32-2432S028R Plus (USB-C - 2.8&quot; R Plus</option>
+          <option value="firmware/manifest-2432S032R.json">ESP32-2432S032R (3.2&quot; - 3.2&quot; resistive</option>
+          <option value="firmware/manifest-2432S032C.json">ESP32-2432S032C (3.2&quot; - 3.2&quot; capacitive</option>
+          <option value="firmware/manifest-3248S035R.json">ESP32-3248S035R (3.5&quot; - 3.5&quot; resistive</option>
+          <option value="firmware/manifest-3248S035C.json">ESP32-3248S035C (3.5&quot; - 3.5&quot; capacitive</option>
+          <option value="firmware/manifest-JC2432W328C.json">JC2432W328C (2.8&quot; - 2.8&quot; JC2432W328C</option>
+          <option value="firmware/manifest-2432S024N.json">ESP32-2432S024N (2.4&quot; - 2.4&quot; no touch</option>
+          <option value="firmware/manifest-2432S032N.json">ESP32-2432S032N (3.2&quot; - 3.2&quot; no touch</option>
+        </select>
+        <esp-web-install-button id="fl-untested" manifest="firmware/manifest-2432S024R.json">
+          <button slot="activate" class="btn small">Flash now</button>
+          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
+          <span slot="not-allowed" class="unsupported">Needs https.</span>
+        </esp-web-install-button>
+      </div>
     </div>
-    <div class="card">
-      <h2>2.4" resistive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S024R (2.4", resistive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S024R.json">
-        <button slot="activate">Install 2.4" resistive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.8" CYD <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028R (2.8", one USB port)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S028R.json">
-        <button slot="activate">Install 2.8" (1 USB) build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.8" CYD2USB <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028 with two USB ports (micro-USB + USB-C)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Wrong colors? <em>Setup → Display &amp; touch → Screen chip</em></li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S028-2USB.json">
-        <button slot="activate">Install 2.8" (2 USB) build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.8" capacitive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028C (2.8", capacitive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Finds its touch chip (CST820 or GT911) by itself</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S028C.json">
-        <button slot="activate">Install 2.8" capacitive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.8" R Plus <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S028R Plus (USB-C, WROOM-32E, NerdMiner kits)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Set up for its ST7789 screen, LED pins and speaker switch</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S028R-Plus.json">
-        <button slot="activate">Install 2.8" R Plus build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>3.2" resistive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S032R (3.2", resistive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S032R.json">
-        <button slot="activate">Install 3.2" resistive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>3.2" capacitive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S032C (3.2", capacitive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Finds its touch chip (GT911 or CST820) by itself</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S032C.json">
-        <button slot="activate">Install 3.2" capacitive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>3.5" resistive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-3248S035R (3.5", resistive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Shows the 240×320 picture in the middle of the screen for now</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-3248S035R.json">
-        <button slot="activate">Install 3.5" resistive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>3.5" capacitive <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-3248S035C (3.5", capacitive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in portrait</li>
-        <li>Shows the 240×320 picture in the middle of the screen for now</li>
-        <li>Finds its touch chip (GT911 or CST820) by itself</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-3248S035C.json">
-        <button slot="activate">Install 3.5" capacitive build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.8" JC2432W328C <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">JC2432W328C (2.8", capacitive)</p>
-      <ul>
-        <li>Touch + Bluetooth controllers, starts in landscape</li>
-        <li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-JC2432W328C.json">
-        <button slot="activate">Install JC2432W328C build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>2.4" no touch <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S024N (2.4", no touch screen)</p>
-      <ul>
-        <li>Needs a Bluetooth controller to play</li>
-        <li>Shows how to pair on the game list; the BOOT button works the menus until then</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S024N.json">
-        <button slot="activate">Install 2.4" no-touch build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
-    <div class="card">
-      <h2>3.2" no touch <span style="font-size:13px;color:var(--warn);vertical-align:middle">needs testers</span></h2>
-      <p class="sub" style="margin:0;color:var(--dim)">ESP32-2432S032N (3.2", no touch screen)</p>
-      <ul>
-        <li>Needs a Bluetooth controller to play</li>
-        <li>Shows how to pair on the game list; the BOOT button works the menus until then</li>
-        <li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li>
-      </ul>
-      <esp-web-install-button manifest="firmware/manifest-2432S032N.json">
-        <button slot="activate">Install 3.2" no-touch build</button>
-        <span slot="unsupported" class="unsupported">Your browser can't flash boards. Use Chrome or Edge on a computer.</span>
-        <span slot="not-allowed" class="unsupported">The page must be opened over https.</span>
-      </esp-web-install-button>
-    </div>
+    <p class="pickfoot">Pick your board, then <strong>Flash now</strong>. What each board does and doesn't support is in
+      <a href="#boards">Supported boards</a> below, with the per-board notes.</p>
   </div>
 
   <section class="support" id="boards">
@@ -321,21 +177,21 @@
       <table class="boards">
         <thead><tr><th>Board</th><th>Display</th><th>Touch</th><th>PS4 controller</th><th>Other controllers</th><th>Sound</th><th>SD card</th><th>USB transfer</th><th>Landscape</th><th>Fills screen</th><th>Tested</th></tr></thead>
         <tbody>
-          <tr><td>ESP32-2432S024C <small>Bluetooth</small></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
-          <tr><td>ESP32-2432S024C <small>touch only</small></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
-          <tr><td>ESP32-2432S024R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S028R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S028 <small>CYD2USB</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S028R <small>Plus</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S028C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S032R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S032C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-3248S035R</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-3248S035C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>JC2432W328C</td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S024N <small>no touch</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>ESP32-2432S032N <small>no touch</small></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
-          <tr><td>Elecrow CrowPanel 2.4" / 2.8"</td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Does not respond; which pins carry the touch chip is being identified">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Tried on real hardware: games and a PS4 controller work, touch does not">✔</span></td></tr>
+          <tr><td>ESP32-2432S024C <small>Bluetooth</small><details><summary>ESP32-2432S024C (2.4&quot;)</summary><ul><li>Pairs PS4, PS5, Xbox, Switch Pro, 8BitDo and more</li><li>Landscape by default; touch works too</li><li>2.8 MB of flash for games</li></ul></details></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
+          <tr><td>ESP32-2432S024C <small>touch only</small><details><summary>ESP32-2432S024C (2.4&quot;)</summary><ul><li>On-screen buttons, portrait</li><li>No Bluetooth</li><li>3.25 MB of flash for games</li></ul></details></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td></tr>
+          <tr><td>ESP32-2432S024R<details><summary>ESP32-2432S024R (2.4&quot;, resistive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028R<details><summary>ESP32-2432S028R (2.8&quot;, one USB port)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028 <small>CYD2USB</small><details><summary>ESP32-2432S028 with two USB ports (micro-USB + USB-C)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Wrong colors? <em>Setup → Display &amp; touch → Screen chip</em></li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028R <small>Plus</small><details><summary>ESP32-2432S028R Plus (USB-C, WROOM-32E, NerdMiner kits)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Set up for its ST7789 screen, LED pins and speaker switch</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S028C<details><summary>ESP32-2432S028C (2.8&quot;, capacitive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Finds its touch chip (CST820 or GT911) by itself</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S032R<details><summary>ESP32-2432S032R (3.2&quot;, resistive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S032C<details><summary>ESP32-2432S032C (3.2&quot;, capacitive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Finds its touch chip (GT911 or CST820) by itself</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-3248S035R<details><summary>ESP32-3248S035R (3.5&quot;, resistive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Shows the 240×320 picture in the middle of the screen for now</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-3248S035C<details><summary>ESP32-3248S035C (3.5&quot;, capacitive)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Shows the 240×320 picture in the middle of the screen for now</li><li>Finds its touch chip (GT911 or CST820) by itself</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>JC2432W328C<details><summary>JC2432W328C (2.8&quot;, capacitive)</summary><ul><li>Touch + Bluetooth controllers, starts in landscape</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S024N <small>no touch</small><details><summary>ESP32-2432S024N (2.4&quot;, no touch screen)</summary><ul><li>Needs a Bluetooth controller to play</li><li>Shows how to pair on the game list; the BOOT button works the menus until then</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>ESP32-2432S032N <small>no touch</small><details><summary>ESP32-2432S032N (3.2&quot;, no touch screen)</summary><ul><li>Needs a Bluetooth controller to play</li><li>Shows how to pair on the game list; the BOOT button works the menus until then</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="n" title="Not supported">✘</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Not supported">✘</span></td></tr>
+          <tr><td>Elecrow CrowPanel 2.4" / 2.8"<details><summary>Elecrow CrowPanel ESP32 HMI 2.4&quot; or 2.8&quot; (DIS03024H), and the same board sold as the ESP32 Solo Miner LCD (DHM04624D)</summary><ul><li>Touch + Bluetooth controllers, starts in portrait</li><li>Asks you to calibrate the touch screen on first start; BOOT skips it, and then works the menus on its own</li><li>PS4 and Stadia controllers, games and sound confirmed on the board sold as the Solo Miner (DHM04624D)</li><li>That board’s touch screen does not answer on any wiring: play it with a controller, and use BOOT for the menus if you have none</li><li>No LED settings (this board has no RGB LED)</li><li>Overwrites the mining firmware if your board came with it</li><li><a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a></li></ul></details></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="n" title="Does not respond; which pins carry the touch chip is being identified">✘</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="u" title="Built in, not tested on hardware yet">?</span></td><td><span class="y" title="Works (tested on hardware)">✔</span></td><td><span class="y" title="Tried on real hardware: games and a PS4 controller work, touch does not">✔</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -344,6 +200,25 @@
       including BLE ones) are new in 2.15.0 and haven't been tried on a board yet. The 3.5" boards show the 240×320 picture in the middle of their 320×480 screen for now.
       The no-touch (N) boards have no touch screen, so Touch is ✘ and they need a Bluetooth controller.
       Tried one? <a href="https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md">Tell us how it went</a> and the table gets updated.</p>
+  </section>
+
+
+  <section class="serial" id="serial">
+    <h2>Serial monitor</h2>
+    <p class="sub">The board's log, live from its USB cable. Useful for reporting a problem: connect, reproduce it, then copy the text.</p>
+    <div class="row">
+      <button class="btn" id="serConnect">Connect</button>
+      <button class="btn" id="serDisconnect" disabled>Disconnect</button>
+      <label for="serBaud">Speed</label>
+      <select id="serBaud">
+        <option value="921600" selected>921600 (this firmware)</option>
+        <option value="115200">115200</option>
+      </select>
+      <button class="btn" id="serCopy">Copy</button>
+      <button class="btn" id="serClear">Clear</button>
+      <span id="serialState">not connected</span>
+    </div>
+    <pre id="serialLog" aria-live="polite"></pre>
   </section>
 
   <section class="send" id="send">
@@ -568,5 +443,99 @@ async function send(files) {
   <a href="https://github.com/hackatnight/HAN-CYD-GBC">source on GitHub</a> ·
   flashing by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
 </footer>
+
+<script>
+// ---- board pickers -------------------------------------------------------
+// One install button per group; the dropdown next to it just points the button at a
+// different manifest.
+for (const id of ['tested', 'testing', 'untested']) {
+  const sel = document.getElementById('sel-' + id);
+  const btn = document.getElementById('fl-' + id);
+  if (!sel || !btn) continue;
+  const sync = () => btn.setAttribute('manifest', sel.value);
+  sel.addEventListener('change', sync);
+  sync();
+}
+
+// ---- serial monitor ------------------------------------------------------
+// Flashing needs the same port, so the monitor lets go of it the moment a flash
+// starts; otherwise the install button finds the port busy and fails with nothing
+// useful on screen.
+(function () {
+  const logEl = document.getElementById('serialLog');
+  const stateEl = document.getElementById('serialState');
+  const bConnect = document.getElementById('serConnect');
+  const bDisconnect = document.getElementById('serDisconnect');
+  const bCopy = document.getElementById('serCopy');
+  const bClear = document.getElementById('serClear');
+  const baudEl = document.getElementById('serBaud');
+  if (!logEl) return;
+
+  let port = null, reader = null, closing = false;
+
+  const setState = (text, cls) => { stateEl.textContent = text; stateEl.className = cls || ''; };
+  const write = (text) => {
+    const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 24;
+    logEl.textContent += text;
+    if (logEl.textContent.length > 200000) logEl.textContent = logEl.textContent.slice(-150000);
+    if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  if (!('serial' in navigator)) {
+    setState('needs Chrome or Edge on a computer', 'err');
+    bConnect.disabled = true;
+  }
+
+  async function disconnect() {
+    closing = true;
+    try { if (reader) await reader.cancel(); } catch (e) {}
+    try { if (port) await port.close(); } catch (e) {}
+    reader = null; port = null; closing = false;
+    bConnect.disabled = false; bDisconnect.disabled = true;
+    setState('not connected');
+  }
+  window.hanSerialRelease = disconnect;
+
+  bConnect.addEventListener('click', async () => {
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: Number(baudEl.value) });
+    } catch (e) {
+      if (e && e.name === 'NotFoundError') { setState('no port chosen'); return; }
+      setState('could not open: ' + (e && e.message ? e.message : e), 'err');
+      port = null;
+      return;
+    }
+    bConnect.disabled = true; bDisconnect.disabled = false;
+    setState('connected at ' + baudEl.value, 'on');
+    write('\n--- connected at ' + baudEl.value + ' ---\n');
+    const decoder = new TextDecoder();
+    try {
+      reader = port.readable.getReader();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) write(decoder.decode(value, { stream: true }));
+      }
+    } catch (e) {
+      if (!closing) { setState('lost the connection', 'err'); write('\n--- ' + e + ' ---\n'); }
+    }
+    try { reader && reader.releaseLock(); } catch (e) {}
+    if (!closing) await disconnect();
+  });
+
+  bDisconnect.addEventListener('click', disconnect);
+  bClear.addEventListener('click', () => { logEl.textContent = ''; });
+  bCopy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(logEl.textContent); setState('copied', 'on'); }
+    catch (e) { setState('could not copy - select the text instead', 'err'); }
+  });
+
+  // hand the port back before any flash begins
+  document.querySelectorAll('esp-web-install-button').forEach((el) => {
+    el.addEventListener('click', () => { if (port) disconnect(); }, true);
+  });
+})();
+</script>
 </body>
 </html>

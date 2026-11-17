@@ -19,12 +19,15 @@ m = re.search(r'Version ([\d.]+\d)', page)
 if not m or m.group(1) != ver:
     bad.append('docs/index.html header says %s' % (m.group(1) if m else 'nothing'))
 
+# A board can be reached either from an install button directly or by picking it in
+# one of the dropdowns, which point an install button at it.
 used = set(re.findall(r'manifest="firmware/(manifest-[^"]+\.json)"', page))
+used |= set(re.findall(r'<option value="firmware/(manifest-[^"]+\.json)"', page))
 have = {os.path.basename(p) for p in glob.glob('docs/firmware/manifest-*.json')}
 for x in sorted(used - have):
-    bad.append('page uses %s, which does not exist' % x)
+    bad.append('page offers %s, which does not exist' % x)
 for x in sorted(have - used):
-    bad.append('%s has no install button on the page' % x)
+    bad.append('%s cannot be reached from the page' % x)
 
 images = set()
 for p in sorted(glob.glob('docs/firmware/manifest-*.json')):
