@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.28.0"
+#define APP_VERSION "2.29.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3266,9 +3266,23 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
   while (true) {
     if (readTouch(x, y)) {
       int sx = x, sy = y, moved = 0, topAtStart = top;
+      // Light the row under the finger while it is down, so what a release would choose
+      // is visible before it happens. Sliding away - which turns the press into a scroll
+      // - puts the light back where it was, so the way out of a wrong row is to move off
+      // it rather than to have picked it already.
+      int selWas = sel, press = -1;
+      if (sy >= y0) {
+        int i = top + (sy - y0) / pitch;
+        if (i >= 0 && i < n && i < top + visible) { press = i; sel = i; drawRow(i); }
+      }
       Drag dg; dragBegin(dg, y);
       while (dragNext(dg, x, y)) {
         moved = max(moved, abs(y - sy));
+        if (press >= 0 && moved > 10) {        // it became a scroll: let the row go
+          int was = press; press = -1; sel = selWas;
+          drawRow(was);
+          if (selWas >= 0 && selWas != was) drawRow(selWas);
+        }
         if (scroll && moved > 10 && sy >= y0) {
           int nt = constrain(topAtStart - (y - sy) / (pitch / 2), 0, max(0, n - visible));
           if (nt != top) { top = nt; drawAll(); }
@@ -6117,9 +6131,24 @@ static int runBrowserLoop() {
     int topAtStart = browserTop;
     uint32_t pressT0 = millis();
     bool held = false;
+    int selWas = browserSel, press = -1;
+    if (sy >= y0 && !roms.empty()) {
+      int i = browserTop + (sy - y0) / rowH;
+      if (i >= 0 && i < (int)roms.size() && i < browserTop + visible) {
+        press = i; browserSel = i;
+        lcd.startWrite(); drawBrowserRow(i, true); lcd.endWrite();
+      }
+    }
     Drag dg; dragBegin(dg, y);
     while (dragNext(dg, x, y)) {
       moved = max(moved, abs(y - sy));
+      if (press >= 0 && moved > 10) {          // a scroll, not a choice
+        int was = press; press = -1; browserSel = selWas;
+        lcd.startWrite();
+        drawBrowserRow(was, was == browserSel);
+        if (selWas >= 0 && selWas != was) drawBrowserRow(selWas, true);
+        lcd.endWrite();
+      }
       // hold a game for half a second: mark or unmark it as a favorite
       if (!held && moved <= 10 && sy >= y0 && sdOk && millis() - pressT0 > 500) {
         held = true;
@@ -6136,7 +6165,13 @@ static int runBrowserLoop() {
       }
       delay(15);
     }
-    if (moved > 10 || held) continue;
+    if (moved > 10 || held) {
+      if (press >= 0) {   // a long press that marked a favorite still lit the row
+        browserSel = selWas;
+        lcd.startWrite(); drawBrowserRow(press, press == browserSel); lcd.endWrite();
+      }
+      continue;
+    }
     if (sy < 32) {
       if (sx > SCR_W - 70) return -1;  // settings
       if (azBtn && sx > SCR_W - 108) { int L = azGrid(); if (L >= 0) azJump(L, false); else drawBrowser(); }
