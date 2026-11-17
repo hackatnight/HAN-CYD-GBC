@@ -715,6 +715,7 @@ licensed games.
 | 3.5" board: colors swapped or picture mirrored | *Setup → Display & touch → Swap red/blue* or *Mirror fix*. |
 | Taps land in the wrong place (any board but the 2.4" C) | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
+| The screen is unreadable, or taps land nowhere | Use **Board tools** under the serial monitor on the [flasher page](https://hackatnight.com/HAN-CYD-GBC/): *Clear touch calibration* or *Clear all settings* over the USB cable, without needing to read the screen. *Board info* prints the board, chip and pin map for a bug report. |
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
 | Touch is off | *Setup → Display & touch → Calibrate touch*. |

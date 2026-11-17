@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.22.0"
+#define APP_VERSION "2.23.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3891,6 +3891,44 @@ static void xferPut(const char *args) {
 }
 
 // Runs one command. Returns false on BYE.
+// Maintenance commands, for the tools on the flasher page.
+//
+// They are here rather than on a menu because the cases that need them are the ones
+// where the screen cannot be trusted: a display setting flipped to something unreadable,
+// a touch calibration that lands every tap in the wrong place. A cable and a browser
+// still work when the screen does not.
+static void sysInfoCollect(std::vector<MenuItem> &it);
+static void sysInfoSerial(const std::vector<MenuItem> &it);
+
+// Every copy of the bundled demo games, wherever they were filed.
+static int xferRemoveDemos(void) {
+  std::vector<String> doomed;
+  File root = SD.open("/Roms");
+  if (root && root.isDirectory()) {
+    while (true) {
+      bool isDir = false;
+      String d = root.getNextFileName(&isDir);
+      if (!d.length()) break;
+      if (!isDir) continue;
+      File sub = SD.open(d);
+      if (!sub) continue;
+      while (true) {
+        bool sawDir = false;
+        String f = sub.getNextFileName(&sawDir);
+        if (!f.length()) break;
+        if (sawDir) continue;
+        String base = f.substring(f.lastIndexOf('/') + 1);
+        if (base.startsWith("HAN-DEMO")) doomed.push_back(f);   // collect, then delete
+      }
+      sub.close();
+    }
+  }
+  if (root) root.close();
+  int n = 0;
+  for (const String &f : doomed) if (SD.remove(f)) n++;
+  return n;
+}
+
 static bool xferCommand(const char *cmd) {
   String c(cmd);
   if (c == "HELLO") {
@@ -3917,6 +3955,30 @@ static bool xferCommand(const char *cmd) {
     Serial.print(xferPathOk(d) && xferMkdirs(d) ? "HNX OK\n" : "HNX ERR can't make the folder\n");
   } else if (c.startsWith("PUT ")) {
     xferPut(cmd + 4);
+  } else if (c == "INFO") {
+    std::vector<MenuItem> it;
+    sysInfoCollect(it);
+    sysInfoSerial(it);          // plain lines: the page shows them in its serial monitor
+    Serial.print("HNX OK\n");
+  } else if (c == "DEFAULTS") {
+    prefs.begin("gbc", false);
+    prefs.clear();
+    prefs.end();
+    Serial.print("HNX OK settings cleared, restarting\n");
+    Serial.flush();
+    delay(150);
+    ESP.restart();
+  } else if (c == "CALCLR") {
+    cfg.calValid = 0;
+    saveSettings();
+    Serial.print("HNX OK touch calibration cleared\n");
+  } else if (c == "RMDEMOS") {
+    Serial.printf("HNX OK %d\n", xferRemoveDemos());
+  } else if (c == "REBOOT") {
+    Serial.print("HNX OK restarting\n");
+    Serial.flush();
+    delay(150);
+    ESP.restart();
   } else if (c == "BYE") {
     Serial.print("HNX BYE\n");
     return false;

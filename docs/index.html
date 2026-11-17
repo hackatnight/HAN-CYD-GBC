@@ -109,7 +109,7 @@
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.22.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.23.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -200,6 +200,19 @@
       <span id="serialState">not connected</span>
     </div>
     <pre id="serialLog" aria-live="polite"></pre>
+
+    <h3 style="margin:18px 0 4px">Board tools</h3>
+    <p class="sub" style="margin:0 0 10px">For when the screen itself is the problem - an unreadable display
+      setting, or a touch calibration that puts every tap in the wrong place. The board answers over the
+      cable, and what it says appears in the log above.</p>
+    <div class="row">
+      <button class="btn small" id="tool-info">Board info</button>
+      <button class="btn small" id="tool-calclr">Clear touch calibration</button>
+      <button class="btn small" id="tool-defaults">Clear all settings</button>
+      <button class="btn small" id="tool-rmdemos">Remove demo games</button>
+      <button class="btn small" id="tool-reboot">Restart board</button>
+      <span id="toolState"></span>
+    </div>
   </section>
 
   <section class="support" id="boards">
@@ -328,6 +341,63 @@ if (!('serial' in navigator)) {
   $('connect').disabled = true;
   status('This browser can\'t talk to USB devices. Use Chrome or Edge on a computer.', true);
 }
+
+// ---- board tools ---------------------------------------------------------
+// They borrow the port the same way the flasher does: the monitor lets go, the tool
+// talks, and the monitor gets it back. If the Send-games section is already holding a
+// link, that one is reused rather than fighting it for the port.
+const toolState = $('toolState');
+
+async function withLink(fn) {
+  if (link) return fn(link);
+  const hadMonitor = !!(window.hanSerial && window.hanSerial.isOpen());
+  if (hadMonitor) await window.hanSerial.release();
+  let p = null, l = null;
+  try {
+    p = await navigator.serial.requestPort();
+    await p.open({ baudRate: BAUD, bufferSize: 16384 });
+    try { await p.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (e) {}
+    l = new HnxLink(p.readable, p.writable);
+    l.onNoise = x => { if (window.hanSerial) window.hanSerial.log(x + '\n'); };
+    await l.hello();
+    return await fn(l);
+  } finally {
+    if (l) await l.release();
+    // hand the open port to the monitor, so its log keeps running afterwards
+    if (p) setTimeout(() => { if (window.hanSerial) window.hanSerial.attach(p, BAUD); }, 300);
+  }
+}
+
+function boardTool(id, cmd, label, confirmText) {
+  const btn = $(id);
+  if (!btn) return;
+  btn.onclick = async () => {
+    if (busy) { toolState.textContent = 'busy'; return; }
+    if (confirmText && !confirm(confirmText)) return;
+    const was = btn.textContent;
+    btn.textContent = 'working...';
+    toolState.textContent = '';
+    try {
+      const reply = await withLink(l => l.command(cmd, 8000));
+      // a command that restarts the board may never answer; that is not a failure
+      toolState.textContent = label(reply);
+    } catch (e) {
+      toolState.textContent = /stopped answering|disconnected/i.test(e.message) && /DEFAULTS|REBOOT/.test(cmd)
+        ? 'sent - the board is restarting' : 'failed: ' + e.message;
+    }
+    btn.textContent = was;
+  };
+}
+
+boardTool('tool-info', 'INFO', () => 'printed above');
+boardTool('tool-calclr', 'CALCLR', () => 'cleared - calibrate it again on the board');
+boardTool('tool-defaults', 'DEFAULTS', () => 'cleared - the board is restarting',
+  'Clear every setting on the board and restart it?\n\nGames, saves and cheats on the SD card are not touched.');
+boardTool('tool-rmdemos', 'RMDEMOS', r => {
+  const n = Number((r.match(/^OK (\d+)/) || [])[1] || 0);
+  return n ? `removed ${n} demo file${n === 1 ? '' : 's'}` : 'no demo games on the card';
+}, 'Remove the bundled demo games from the SD card?');
+boardTool('tool-reboot', 'REBOOT', () => 'restarting');
 
 $('connect').onclick = async () => {
   try {
