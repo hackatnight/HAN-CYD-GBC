@@ -62,7 +62,7 @@ and a one-click web flasher.
 ✅ **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
 board. 🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
 
-‡ Everything except USB game transfer and landscape, which nobody has tried on this board yet.
+‡ Everything except sending games over USB, which currently crashes and reboots this board - being looked into.
 † The 3.5" boards have a 320×480 screen and currently show the same 240×320 picture centred, with a black
 border. A full-screen layout is planned once someone confirms the board works.
 
