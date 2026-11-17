@@ -57,7 +57,7 @@
     background: var(--input-bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%237ce8ff'/></svg>") no-repeat right 11px center;
     background-size: 10px 6px;
     color: var(--text); border: 1px solid var(--input-border);
-    padding: 9px 34px 9px 11px; font: inherit; max-width: 100%; width: 100%;
+    padding: 9px 34px 9px 11px; font: inherit; max-width: 100%;
     text-overflow: ellipsis;
   }
   select:hover { border-color: var(--accent); }
@@ -100,15 +100,24 @@
   .pickhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
   .pickhead h2 { margin: 0; font-size: 19px; }
   .picknote { color: var(--dim); font-size: 13px; }
-  .pickrow { display: flex; gap: 10px; align-items: center; }
-  .pickrow select { flex: 1 1 auto; min-width: 0; }
+  /* The cards are about 240 px wide, and the two buttons cannot shrink below their
+     labels, so a dropdown sharing the line with them was squeezed down to its arrow.
+     It gets the line to itself and the buttons share the one beneath. */
+  .pickrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pickrow select { flex: 1 1 100%; min-width: 0; }
+  .pickrow .btn { flex: 1 1 auto; }
   .btn.small { padding: 7px 12px; font-size: 14px; white-space: nowrap; }
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
   .local { border-top: 1px solid var(--hilite); padding-top: 14px; }
   .local .pickrow { margin-top: 8px; }
-  #localFiles { flex: 1 1 auto; min-width: 0; color: var(--dim); font: inherit; font-size: 14px; }
+  #localFiles { flex: 1 1 100%; min-width: 0; color: var(--dim); font: inherit; font-size: 14px; }
+  #localFiles::file-selector-button {
+    background: var(--btn-bg); color: var(--text); border: 1px solid var(--btn-border);
+    padding: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; margin-right: 10px;
+  }
+  #localFiles::file-selector-button:hover { background: var(--btn-hover); border-color: var(--accent); }
   #localList { margin-top: 8px; display: grid; gap: 6px; }
   #localList .f { display: flex; gap: 8px; align-items: center; font-size: 14px; }
   #localList .f span { color: var(--dim); flex: 1 1 auto; }
