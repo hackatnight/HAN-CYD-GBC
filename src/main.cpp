@@ -251,7 +251,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.12"
+#define APP_VERSION "2.19.13"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -324,7 +324,13 @@ public:
       c.invert = false;
       c.rgb_order = false;
       c.dlen_16bit = false;
-      c.bus_shared = false;
+      // True only where something else really is on the screen's SPI bus: on these
+      // boards the XPT2046 touch chip is. LovyanGFX uses this to decide whether it may
+      // hold the bus and cache its register setup between draws; told it owns the bus
+      // outright, the touch chip's own transaction never gets a clean hand-off and its
+      // readings come back empty. The boards with touch on its own pins, or on I2C, do
+      // own the bus and are better off keeping it.
+      c.bus_shared = (TOUCH_KIND == TOUCH_XPT_BUS);
 #if PANEL_BIG
       c.memory_width = 320;      // centered 240x320 window
       c.memory_height = 480;
