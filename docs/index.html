@@ -115,6 +115,14 @@
   <canvas class="hero" id="hero" width="320" height="140"
           aria-label="The wireframe H@N logo turning over a starfield, cycling through the board's four themes"></canvas>
   <noscript><img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen"></noscript>
+  <script type="module">
+    // Its own module on purpose: importing this alongside the flasher meant a failed
+    // send.js took the banner down with it, which is how a transient 503 during a
+    // deploy left an empty black box at the top of the page.
+    import { startHero } from './hero.js';
+    const h = document.getElementById('hero');
+    if (h && h.getContext) startHero(h);
+  </script>
 
   <div class="warn">
     <strong>Pick the build for your exact board</strong> (the model number is printed on the back). The
@@ -330,8 +338,6 @@
 </main>
 <script type="module">
 import { BAUD, HnxLink, targetFor, numbered, romFolders } from './send.js';
-import { startHero } from './hero.js';
-{ const h = document.getElementById('hero'); if (h && h.getContext) startHero(h); }
 const $ = id => document.getElementById(id);
 let port = null, link = null, busy = false, clashRule = null;
 const status = (t, err = false) => { $('status').textContent = t; $('status').className = err ? 'err' : ''; };
