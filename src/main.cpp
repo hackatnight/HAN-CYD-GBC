@@ -251,7 +251,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.11"
+#define APP_VERSION "2.19.12"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3012,96 +3012,28 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
 
 #if TOUCH_KIND == TOUCH_XPT_BUS
 // ---- touch wiring probe (diagnostic) --------------------------------------
-// These boards are built for an XPT2046 that shares the screen's SPI bus, which is
-// what Elecrow's own wiring notes describe. If a board turns out to have the chip on
-// its own pins instead - the way the 2.8" CYD does - the screen works and the touch
-// reads nothing, with no way to tell the two apart from the outside. So the touch test
-// also bit-bangs the other wiring (25/32/39, CS 33) and shows what comes back. Those
-// pins are not used by the screen, so this cannot disturb it, and it saves building a
-// second firmware just to find out which wiring a new board has.
-#define PROBE_SCLK 25
-#define PROBE_MOSI 32
-#define PROBE_MISO 39
-static void xptProbeBegin() {
-  pinMode(PROBE_SCLK, OUTPUT); digitalWrite(PROBE_SCLK, LOW);
-  pinMode(PROBE_MOSI, OUTPUT);
-  pinMode(PROBE_MISO, INPUT);
-  pinMode(PIN_TP_CS, OUTPUT);  digitalWrite(PIN_TP_CS, HIGH);
-}
-static uint16_t xptRead(int sclk, int mosi, int miso, int cs, uint8_t cmd) {
-  uint16_t v = 0;
-  digitalWrite(cs, LOW);
-  for (int i = 7; i >= 0; i--) {              // command byte, MSB first
-    digitalWrite(mosi, (cmd >> i) & 1);
-    digitalWrite(sclk, HIGH); delayMicroseconds(2);
-    digitalWrite(sclk, LOW);  delayMicroseconds(2);
-  }
-  for (int i = 0; i < 16; i++) {              // 16 bits back, the top 12 are the reading
-    digitalWrite(sclk, HIGH); delayMicroseconds(2);
-    v = (uint16_t)((v << 1) | (digitalRead(miso) ? 1 : 0));
-    digitalWrite(sclk, LOW);  delayMicroseconds(2);
-  }
-  digitalWrite(cs, HIGH);
-  return (uint16_t)((v >> 3) & 0x0FFF);
-}
-static uint16_t xptProbeRead(uint8_t cmd) {
-  return xptRead(PROBE_SCLK, PROBE_MOSI, PROBE_MISO, PIN_TP_CS, cmd);
-}
-
-// Which pins is the touch chip actually on?
+// GPIO36 going low under a press proved the XPT2046 is on this board and watching the
+// panel: that pin is its pen-interrupt output, and the chip is there on the back of a
+// Solo Miner board, below the SD slot. The connectors account for the rest of the pins -
+// GPIO_D has IO25/IO32, I2C has IO21/IO22, UART1 has IO16/IO17, SPK has IO26 - so the
+// chip shares the screen's SPI bus, which is what this build already assumes.
 //
-// GPIO 36 going low under a press proved the XPT2046 is on this board and watching the
-// panel: that pin is its pen-interrupt output. So it is there, powered, and simply not
-// answering on the pins tried so far. This board has no room for a touch bus of its own
-// - 25/32 go to the GPIO_D connector, 16/17 to UART1, 21/22 to I2C - so the chip almost
-// certainly shares the screen's SPI bus, and the pin that was never varied is the chip
-// select.
+// An earlier version of this screen bit-banged that bus looking for the chip select, and
+// it hung the board: the display task draws from the other core over the same bus, and
+// taking its pins away mid-transfer wedges the SPI peripheral with no way back. So
+// nothing here touches the screen's pins. Reading the pins below is safe because the
+// screen, the SD card, the speaker and the backlight all use different ones.
 //
-// Command 0x87 reads the chip's internal temperature sensor, which answers with a
-// mid-range number whenever the chip is selected and listening, touched or not. A
-// wiring with nothing on it floats to 0 or 4095.
-//
-// Sweeping the screen's bus means borrowing its pins, so the display is re-initialised
-// afterwards and the screen is drawn after the sweep, not before: nothing to see.
-// The pins a touch interrupt could sit on: the input-only ones and the two free GPIOs.
-// None is used by the screen, the SD card, the speaker or the backlight.
+// The pins a touch interrupt could sit on: the input-only ones, and the two the I2C
+// connector brings out.
 static const int WATCH[] = { 36, 39, 34, 35, 21, 22 };
 
-static char scanResult[6][40];
-static int scanHits;
-
 static void xptProbeScan() {
-  static const int CS_TRY[] = { 33, 4, 16, 17, 21, 22, 25, 32 };
-  static const int MISO_TRY[] = { 12, 39, 35, 34 };
-  int tried = 0;
-  scanHits = 0;
-  for (unsigned m = 0; m < sizeof MISO_TRY / sizeof *MISO_TRY; m++) {
-    int miso = MISO_TRY[m];
-    pinMode(PIN_LCD_SCLK, OUTPUT); digitalWrite(PIN_LCD_SCLK, LOW);
-    pinMode(PIN_LCD_MOSI, OUTPUT);
-    pinMode(miso, INPUT);
-    for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
-      int cs = CS_TRY[k];
-      if (cs == miso) continue;
-      pinMode(cs, OUTPUT); digitalWrite(cs, HIGH);
-      uint16_t t = xptRead(PIN_LCD_SCLK, PIN_LCD_MOSI, miso, cs, 0x87);
-      tried++;
-      if (t > 0 && t < 4095 && scanHits < 6)
-        snprintf(scanResult[scanHits++], sizeof scanResult[0],
-                 "in%d cs%d t=%u  FOUND IT", miso, cs, t);
-    }
-  }
-  if (!scanHits)
-    snprintf(scanResult[scanHits++], sizeof scanResult[0], "no answer on %d wirings", tried);
-  // give the screen its bus back
-  lcd.init();
-  lcd.setBrightness(cfg.brightness);
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++) pinMode(WATCH[k], INPUT);
 }
 
-// Live levels of the pins a touch interrupt could be on. One of them changing when the
-// panel is pressed means the touch circuit is alive and only the SPI wiring is wrong.
-// None of them changing means there is nothing wired to the panel to find.
+// Live levels of those pins. One changing when the panel is pressed means the touch
+// circuit is alive, which is how GPIO36 was found.
 static void xptWatchDraw(int y) {
   char line[48];
   int n = 0;
@@ -3114,11 +3046,6 @@ static void xptWatchDraw(int y) {
 #endif
 
 static void touchTest() {
-#if TOUCH_KIND == TOUCH_XPT_BUS
-  // Runs first: it borrows the screen's bus and puts it back, so there is nothing on
-  // screen to disturb. The results are drawn with everything else below.
-  xptProbeScan();
-#endif
   lcd.fillScreen(C_BG);
   uiHeader("Touch test", "Done");
   lcd.setFont(&fonts::Font2);
@@ -3127,16 +3054,8 @@ static void touchTest() {
   lcd.drawString("appear under it. If not, run", 8, 58);
   lcd.drawString("Calibrate touch. BOOT/B = exit.", 8, 76);
 #if TOUCH_KIND == TOUCH_XPT_BUS
-  {
-    int y = 114;
-    lcd.drawString("touch chip on the screen bus:", 8, y); y += 18;
-    for (int k = 0; k < scanHits; k++) {
-      lcd.setTextColor(strstr(scanResult[k], "FOUND") ? C_GREEN : C_DIM, C_BG);
-      lcd.drawString(scanResult[k], 8, y); y += 16;
-    }
-    lcd.setTextColor(C_DIM, C_BG);
-    lcd.drawString("press the panel and watch 36:", 8, y + 6);
-  }
+  xptProbeScan();
+  lcd.drawString("36 should go 1 -> 0 when pressed:", 8, 114);
 #endif
   for (int i = 0; i < 4; i++) {
     int cx = (i & 1) ? SCR_W - 20 : 20, cy = (i & 2) ? SCR_H - 20 : 110;
@@ -3163,7 +3082,7 @@ static void touchTest() {
       lcd.setTextColor(C_TEXT, C_BG);
       snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
       lcd.drawString(b, 8, 268);
-      xptWatchDraw(268);
+      xptWatchDraw(132);
     }
 #endif
     delay(10);
