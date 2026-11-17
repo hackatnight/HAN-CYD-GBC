@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.27.1"
+#define APP_VERSION "2.28.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -950,6 +950,40 @@ static bool readTouch(int &x, int &y) {
   x = constrain((int)lroundf(sx), 0, SCR_W - 1);
   y = constrain((int)lroundf(sy), 0, SCR_H - 1);
   idlePoke();
+  return true;
+}
+
+// Following a finger while it drags.
+//
+// A fingertip on a resistive panel is not a steady contact. Its pressure wavers, the pen
+// interrupt chatters with it, and the touch driver discards any reading where fewer than
+// three of its seven samples agree. A plain while (readTouch(...)) therefore ends a drag
+// at the first flicker - which is exactly why scrolling wanted a stylus, or a slow and
+// deliberate finger, and felt broken with a normal one.
+//
+// So short gaps are ridden out rather than treated as a release, and the position is
+// smoothed, because the centre of a fingertip wanders a few pixels even held still.
+// Deliberately not done inside readTouch(): the game pad reads through that too, and
+// holding a direction 90 ms past the release would make the controls feel sticky.
+#define DRAG_GAP_MS 90
+
+struct Drag { float yf; int lastY; uint32_t seen; };
+
+static void dragBegin(Drag &d, int y) { d.yf = (float)y; d.lastY = y; d.seen = millis(); }
+
+// False once the finger is really gone. y comes back smoothed.
+static bool dragNext(Drag &d, int &x, int &y) {
+  int rx, ry;
+  if (readTouch(rx, ry)) {
+    d.seen = millis();
+    d.lastY = ry;
+    x = rx;
+  } else {
+    if (millis() - d.seen > DRAG_GAP_MS) return false;
+    ry = d.lastY;            // a blink, not a lift: carry on from where it was
+  }
+  d.yf += ((float)ry - d.yf) * 0.45f;
+  y = (int)lroundf(d.yf);
   return true;
 }
 
@@ -3232,7 +3266,8 @@ static int runList(const char *title, const char *headerBtn, std::vector<MenuIte
   while (true) {
     if (readTouch(x, y)) {
       int sx = x, sy = y, moved = 0, topAtStart = top;
-      while (readTouch(x, y)) {
+      Drag dg; dragBegin(dg, y);
+      while (dragNext(dg, x, y)) {
         moved = max(moved, abs(y - sy));
         if (scroll && moved > 10 && sy >= y0) {
           int nt = constrain(topAtStart - (y - sy) / (pitch / 2), 0, max(0, n - visible));
@@ -6082,7 +6117,8 @@ static int runBrowserLoop() {
     int topAtStart = browserTop;
     uint32_t pressT0 = millis();
     bool held = false;
-    while (readTouch(x, y)) {
+    Drag dg; dragBegin(dg, y);
+    while (dragNext(dg, x, y)) {
       moved = max(moved, abs(y - sy));
       // hold a game for half a second: mark or unmark it as a favorite
       if (!held && moved <= 10 && sy >= y0 && sdOk && millis() - pressT0 > 500) {
