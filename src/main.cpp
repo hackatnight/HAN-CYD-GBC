@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.26.0"
+#define APP_VERSION "2.27.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1532,42 +1532,57 @@ static void wfPalette(WireFb &f, int glow) {
   for (int i = 0; i < 16; i++) f.pal[i] = (uint16_t)((f.pal[i] >> 8) | (f.pal[i] << 8));   // pushImage takes them byte-swapped
 }
 
-// ---- boot screen: stars fly past, the logo spins in from far away, settles and
-// rocks gently, flashes once, then "hackatnight.com" types itself underneath.
+// ---- the logo scene ----
+//
+// One animation, drawn in two places: the boot screen and the screensaver. The boot
+// screen used to run a version of its own that flew in from far away, flashed once and
+// settled - fine as an entrance, but it had a beginning and an end, so it could not be
+// looped and was no use standing still on an idle board. This one loops: the stars run
+// on a modulo and the logo rocks on two sines, so it never arrives anywhere to stop.
+//
+// Both callers draw through here, so changing the scene changes the boot screen and the
+// screensaver together, which is the point of there being one of it.
+#define LOGO_STARS 64
+
+static void logoScene(WireFb &f, float t) {
+  static struct Star { float x, y, z; } st[LOGO_STARS];
+  static bool seeded = false;
+  if (!seeded) {
+    uint32_t r = esp_random();
+    auto rnd = [&]() { r = r * 1103515245u + 12345u; return (float)((r >> 8) & 0xFFFF) / 65535.0f; };
+    for (int i = 0; i < LOGO_STARS; i++) st[i] = { rnd() * 2 - 1, rnd() * 2 - 1, rnd() };
+    seeded = true;
+  }
+  const float cx = f.w / 2.0f, cy = f.h * 0.55f;
+  wfClear(f);
+  for (int i = 0; i < LOGO_STARS; i++) {   // stars fly toward the viewer, forever
+    float z = fmodf(st[i].z - t * 0.25f + 8.0f, 1.0f) + 0.05f;
+    int x = (int)(cx + st[i].x * f.w * 0.2f / z), y = (int)(f.h / 2 + st[i].y * f.h * 0.25f / z);
+    int lvl = z > 0.75f ? 0 : z > 0.5f ? 1 : z > 0.25f ? 2 : 3;
+    wfPlot(f, x, y, WI_STAR1 + lvl);
+    if (lvl == 3) wfPlot(f, x + 1, y, WI_STAR4);
+  }
+  wfPalette(f, 0);
+  const float hPx = min(f.h * 0.42f, f.w * 0.82f / (WIRE_LOGO_ASPECT / 256.0f));
+  wfLogo(f, cx, cy, hPx, sinf(t * 1.2f) * 0.35f, sinf(t * 0.9f) * 0.2f, 6.0f);
+  wfPush(f);
+}
+
+// ---- boot screen: the logo scene, with "hackatnight.com" typing itself underneath.
 // Runs as a task on core 0 while the rest of the board starts up. ----
 static volatile bool splashSkip = false, splashStop = false, splashDone = true;
 static WireFb bootFb;
 #define BOOT_TEXT_H 40
-#define BOOT_STARS 64
 static const char *SP_TEXT = "hackatnight.com";
 
 static void splashTask(void *) {
   WireFb &f = bootFb;
-  struct Star { float x, y, z; } st[BOOT_STARS];
-  uint32_t r = esp_random();
-  auto rnd = [&]() { r = r * 1103515245u + 12345u; return (float)((r >> 8) & 0xFFFF) / 65535.0f; };
-  for (int i = 0; i < BOOT_STARS; i++) st[i] = { rnd() * 2 - 1, rnd() * 2 - 1, rnd() };
-  const float hPx = min(f.h * 0.42f, SCR_W * 0.82f / (WIRE_LOGO_ASPECT / 256.0f));
-  const float cx = f.w / 2.0f, cy = f.h * 0.55f;
   const uint32_t t0 = millis();
   int typed = -1; bool cursor = false;
   const int ty = SCR_H - BOOT_TEXT_H / 2 - 4;
   while (!splashSkip) {
     float t = (millis() - t0) / 1000.0f;
-    wfClear(f);
-    for (int i = 0; i < BOOT_STARS; i++) {   // stars fly toward the viewer
-      float z = fmodf(st[i].z - t * 0.25f + 8.0f, 1.0f) + 0.05f;
-      int x = (int)(cx + st[i].x * f.w * 0.2f / z), y = (int)(f.h / 2 + st[i].y * f.h * 0.25f / z);
-      int lvl = z > 0.75f ? 0 : z > 0.5f ? 1 : z > 0.25f ? 2 : 3;
-      wfPlot(f, x, y, WI_STAR1 + lvl);
-      if (lvl == 3) wfPlot(f, x + 1, y, WI_STAR4);
-    }
-    float e = t >= 1.6f ? 1.0f : 1.0f - powf(1.0f - t / 1.6f, 3.0f);   // ease out
-    float ay = (1.0f - e) * 3.2f + sinf(t * 1.2f) * 0.35f * e, ax = sinf(t * 0.9f) * 0.2f;
-    int glow = t > 1.6f && t < 2.0f ? (int)(200 * (1.0f - fabsf(t - 1.8f) / 0.2f)) : 0;
-    wfPalette(f, glow);
-    wfLogo(f, cx, cy, hPx, ay, ax, 6.0f + (1.0f - e) * 40.0f);
-    wfPush(f);
+    logoScene(f, t);
     // the web address types itself, then a blinking cursor
     int n = t < 1.9f ? 0 : min((int)strlen(SP_TEXT), (int)((t - 1.9f) / 0.07f) + 1);
     bool cur = n < (int)strlen(SP_TEXT) || ((int)(t * 3) & 1);
@@ -1721,12 +1736,7 @@ static bool screensaverIfIdle() {
     uint32_t now = millis();
     if (now - last >= 40) {
       last = now;
-      float t = (now - t0) / 1000.0f;
-      wfClear(f);
-      wfPalette(f, 0);
-      float hPx = min(f.h * 0.5f, f.w * 0.8f / (WIRE_LOGO_ASPECT / 256.0f));
-      wfLogo(f, f.w / 2.0f, f.h / 2.0f, hPx, sinf(t * 1.4f) * 0.9f, sinf(t * 1.0f) * 0.35f, 6.0f);
-      wfPush(f);
+      logoScene(f, (now - t0) / 1000.0f);
     }
     delay(5);
   }
