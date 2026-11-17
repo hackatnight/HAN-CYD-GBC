@@ -719,6 +719,7 @@ licensed games.
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
 | Touch is off | *Setup → Display & touch → Calibrate touch*. |
+| No on-screen buttons in landscape | *Setup → Controller → Landscape pad*: **Outlines** draws a d-pad, A/B and MENU/SEL/START over the game, **Touch zones** makes the same areas respond without drawing anything, **Off** is the old behavior. Portrait uses the panel below the game as before. |
 | Touch does nothing at all on an Elecrow 2.4" board | If it's the **ESP32 Solo Miner LCD** (SKU `DHM04624D`), its touch chip answers on GPIO4, not GPIO12 like every other board of this family - fixed in 2.20.0, so flash that or later. Background: [the touchscreen reads GPIO4, not GPIO12](docs/elecrow-esp32-solo-miner-2.4-touch.md). |
 | Controller won't pair | Bluetooth build only. Open *Pair new controller* first, then put the controller in pairing mode (PS4: SHARE + PS; PS5: CREATE + PS; Xbox: pair button; Switch Pro: sync button). If it paired with another device before, *Forget all controllers* and try again. Xbox controllers may need a firmware update (Xbox Accessories app) for Bluetooth. |
 | A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |

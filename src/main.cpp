@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.24.0"
+#define APP_VERSION "2.25.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -519,6 +519,7 @@ struct Settings {
   uint8_t showFps = 0;
   uint8_t rotation = DEFAULT_ROTATION;   // LovyanGFX rotation 0..3
   uint8_t touchPad = 0;    // on-screen controls: 0 = auto (hide with a controller), 1 = always, 2 = never
+  uint8_t padLand = 2;     // landscape pad: 0 = off, 1 = touch zones only, 2 = drawn outlines
   uint8_t mirrorFix = 0;   // drop the X mirror if the image is mirrored
   uint8_t invert = DEFAULT_INVERT;
   uint8_t panelType = DEFAULT_PANEL;   // screen chip on 2.8" / 3.2" boards: 0 = ILI9341, 1 = ST7789
@@ -561,6 +562,7 @@ static void loadSettings() {
   cfg.showFps = prefs.getUChar("fps", cfg.showFps);
   cfg.rotation = prefs.getUChar("lgrot", cfg.rotation) & 3;
   cfg.touchPad = prefs.getUChar("tpad", cfg.touchPad);
+  cfg.padLand = prefs.getUChar("tpadL", cfg.padLand);
 #if TOUCH_KIND == TOUCH_NONE
   cfg.touchPad = 2;    // no touch screen: never draw the on-screen buttons
 #endif
@@ -608,6 +610,7 @@ static void saveSettings() {
   prefs.putUChar("fps", cfg.showFps);
   prefs.putUChar("lgrot", cfg.rotation);
   prefs.putUChar("tpad", cfg.touchPad);
+  prefs.putUChar("tpadL", cfg.padLand);
   prefs.putUChar("mirr", cfg.mirrorFix);
   prefs.putUChar("inv", cfg.invert);
   prefs.putUChar("pnl", cfg.panelType);
@@ -2176,17 +2179,74 @@ static void waitDisplayIdle() {
 #define PAD_SELECT 0x40
 #define PAD_START  0x80
 
-#define DPAD_CX 52
-#define DPAD_CY 268
-#define BTN_A_X 207
-#define BTN_A_Y 250
-#define BTN_B_X 162
-#define BTN_B_Y 284
-#define BTN_R   20
+// Where the pad sits. Portrait gives it a panel of its own below the game; landscape
+// floats it over the picture, because a stretched game leaves no margin to put it in.
+// Both layouts feed the same hit test and the same press handling.
+static bool ctrlOverlay = false;
+static int DPAD_CX = 52, DPAD_CY = 268, DPAD_ARM = 46;
+static int BTN_A_X = 207, BTN_A_Y = 250;
+static int BTN_B_X = 162, BTN_B_Y = 284;
+static int BTN_R = 20;
+static int MISC_X0 = 102, MISC_W = 32, MISC_GAP = 0, MISC_Y0 = 222;
+
+static void layoutControls() {
+  ctrlOverlay = (cfg.rotation & 1) != 0;
+  if (!ctrlOverlay) {
+    DPAD_CX = 52; DPAD_CY = 268; DPAD_ARM = 46;
+    BTN_A_X = 207; BTN_A_Y = 250; BTN_B_X = 162; BTN_B_Y = 284; BTN_R = 20;
+    MISC_X0 = 104; MISC_W = 32; MISC_GAP = 0; MISC_Y0 = 222;
+  } else {
+    // bottom corners, where thumbs already rest when the board is held sideways
+    DPAD_ARM = 36; DPAD_CX = 44; DPAD_CY = SCR_H - 48;
+    BTN_R = 16; BTN_A_X = SCR_W - 28; BTN_A_Y = SCR_H - 60;
+    BTN_B_X = SCR_W - 62; BTN_B_Y = SCR_H - 32;
+    MISC_W = 34; MISC_GAP = 4; MISC_Y0 = SCR_H - 17;
+    MISC_X0 = SCR_W / 2 - (3 * MISC_W + 2 * MISC_GAP) / 2;
+  }
+}
+
+// The pad drawn over a running game: outlines only, filled while held, so as little of
+// the picture is covered as the shapes allow.
+static void drawControlsOverlay(uint8_t pressed, bool menuDown) {
+  const int a = DPAD_ARM / 3, len = DPAD_ARM;
+  auto arm = [&](int x, int y, int w, int h, bool on) {
+    if (on) lcd.fillRoundRect(x, y, w, h, 3, C_ACCENT);
+    else    lcd.drawRoundRect(x, y, w, h, 3, C_TEXT);
+  };
+  arm(DPAD_CX - a, DPAD_CY - len, a * 2, len - a, pressed & PAD_UP);
+  arm(DPAD_CX - a, DPAD_CY + a, a * 2, len - a, pressed & PAD_DOWN);
+  arm(DPAD_CX - len, DPAD_CY - a, len - a, a * 2, pressed & PAD_LEFT);
+  arm(DPAD_CX + a, DPAD_CY - a, len - a, a * 2, pressed & PAD_RIGHT);
+  if (pressed & PAD_A) lcd.fillCircle(BTN_A_X, BTN_A_Y, BTN_R, C_ACCENT);
+  else                 lcd.drawCircle(BTN_A_X, BTN_A_Y, BTN_R, C_TEXT);
+  if (pressed & PAD_B) lcd.fillCircle(BTN_B_X, BTN_B_Y, BTN_R, C_ACCENT);
+  else                 lcd.drawCircle(BTN_B_X, BTN_B_Y, BTN_R, C_TEXT);
+  lcd.setFont(&fonts::Font0);
+  lcd.setTextDatum(middle_center);
+  lcd.setTextColor(C_TEXT);
+  lcd.drawString("A", BTN_A_X, BTN_A_Y);
+  lcd.drawString("B", BTN_B_X, BTN_B_Y);
+  static const char *LBL[3] = { "MENU", "SEL", "START" };
+  const bool on[3] = { menuDown, (pressed & PAD_SELECT) != 0, (pressed & PAD_START) != 0 };
+  for (int i = 0; i < 3; i++) {
+    int x = MISC_X0 + i * (MISC_W + MISC_GAP);
+    if (on[i]) lcd.fillRoundRect(x, MISC_Y0, MISC_W, 14, 5, C_ACCENT);
+    else       lcd.drawRoundRect(x, MISC_Y0, MISC_W, 14, 5, C_TEXT);
+    lcd.drawString(LBL[i], x + MISC_W / 2, MISC_Y0 + 7);
+  }
+  lcd.setTextDatum(top_left);
+}
 
 static void drawControls(uint8_t pressed, bool menuDown) {
+  if (ctrlOverlay && cfg.padLand == 1) return;   // zones only: the pad is felt, not seen
   xSemaphoreTake(lcdMutex, portMAX_DELAY);
   lcd.startWrite();
+  if (ctrlOverlay) {
+    drawControlsOverlay(pressed, menuDown);
+    lcd.endWrite();
+    xSemaphoreGive(lcdMutex);
+    return;
+  }
   lcd.fillRect(0, CTRL_Y, SCR_W, SCR_H - CTRL_Y, C_BG);
   lcd.drawFastHLine(0, CTRL_Y, SCR_W, C_PANEL);
   // D-pad
@@ -2222,6 +2282,31 @@ enum { HIT_NONE = 0, HIT_MENU = 0x100 };
 
 // Maps a touch point to pad bits (8-way d-pad, A+B on the seam between buttons)
 static int touchToPad(int x, int y) {
+  if (ctrlOverlay) {
+    // Only the three corners answer; the rest of the picture stays a plain tap, so
+    // tapping the middle of a game still opens the menu as it always did.
+    if (x <= DPAD_CX + DPAD_ARM + 8 && y >= DPAD_CY - DPAD_ARM - 8) {
+      int dx = x - DPAD_CX, dy = y - DPAD_CY;
+      if (dx * dx + dy * dy < 7 * 7) return HIT_NONE;
+      int p = 0;
+      if (dy < 0 && -dy * 5 > abs(dx) * 2) p |= PAD_UP;
+      if (dy > 0 && dy * 5 > abs(dx) * 2) p |= PAD_DOWN;
+      if (dx < 0 && -dx * 5 > abs(dy) * 2) p |= PAD_LEFT;
+      if (dx > 0 && dx * 5 > abs(dy) * 2) p |= PAD_RIGHT;
+      return p;
+    }
+    if (x >= BTN_B_X - BTN_R - 6 && y >= BTN_A_Y - BTN_R - 6) {
+      float fa = sqrtf((float)((x - BTN_A_X) * (x - BTN_A_X) + (y - BTN_A_Y) * (y - BTN_A_Y)));
+      float fb = sqrtf((float)((x - BTN_B_X) * (x - BTN_B_X) + (y - BTN_B_Y) * (y - BTN_B_Y)));
+      if (fabsf(fa - fb) < 8.0f && fa < BTN_R * 2 && fb < BTN_R * 2) return PAD_A | PAD_B;
+      return fa < fb ? PAD_A : PAD_B;
+    }
+    if (y >= MISC_Y0 - 5) {
+      int i = (x - MISC_X0) / (MISC_W + MISC_GAP);
+      if (x >= MISC_X0 && i >= 0 && i < 3) return i == 0 ? HIT_MENU : (i == 1 ? PAD_SELECT : PAD_START);
+    }
+    return HIT_NONE;
+  }
   if (y < CTRL_Y - 4) return HIT_NONE;
   if (x < 102) {
     int dx = x - DPAD_CX, dy = y - DPAD_CY;
@@ -3541,6 +3626,11 @@ static const char *touchPadName() {
   return n[cfg.touchPad % 3];
 }
 
+static const char *padLandName() {
+  static const char *n[] = { "Off", "Touch zones", "Outlines" };
+  return n[cfg.padLand % 3];
+}
+
 // Next orientation in the order the user would turn the board
 static void cycleOrientation() {
 #if HAVE_BT
@@ -3757,7 +3847,7 @@ static void pairScreen() {
 }
 
 static void controllerMenu() {
-  enum { CM_BT, CM_CONN, CM_PAIR, CM_LAYOUT, CM_TOUCHPAD, CM_FORGET };
+  enum { CM_BT, CM_CONN, CM_PAIR, CM_LAYOUT, CM_TOUCHPAD, CM_PADLAND, CM_FORGET };
   while (true) {
     String st = btStatus();
     std::vector<MenuItem> it;
@@ -3771,6 +3861,7 @@ static void controllerMenu() {
     add(CM_LAYOUT, "Button layout", cfg.btLayout ? "Xbox (A=bottom)" : "Game Boy");
 #if TOUCH_KIND != TOUCH_NONE
     add(CM_TOUCHPAD, "On-screen controls", touchPadName());
+    add(CM_PADLAND, "Landscape pad", padLandName());
 #endif
     add(CM_FORGET, "Forget all controllers", "");
     static int selCtl = -1;
@@ -3801,6 +3892,7 @@ static void controllerMenu() {
         break;
       case CM_LAYOUT: cfg.btLayout ^= 1; break;
       case CM_TOUCHPAD: cfg.touchPad = (cfg.touchPad + 1) % 3; break;
+      case CM_PADLAND: cfg.padLand = (cfg.padLand + 1) % 3; break;
       case CM_FORGET:
         btForgetAll();
         lcd.fillScreen(C_BG);
@@ -4861,7 +4953,7 @@ static PauseResult pauseMenu() {
 // On-screen controls: portrait only; in the BT build hidden when a controller is
 // connected (Auto) or always (Never). With them hidden, tapping the screen opens the menu.
 static bool wantControls() {
-  if (cfg.rotation & 1) return false;
+  if ((cfg.rotation & 1) && cfg.padLand == 0) return false;   // landscape pad switched off
 #if HAVE_BT
   if (cfg.touchPad == 2) return false;
   if (cfg.touchPad == 0 && btCount() > 0) return false;
@@ -4871,7 +4963,9 @@ static bool wantControls() {
 
 static void layoutGame() {
   gControls = wantControls();
-  int aw = SCR_W, ah = gControls ? GAME_H : SCR_H;
+  layoutControls();
+  // the overlay sits on the picture, so landscape keeps the whole screen for the game
+  int aw = SCR_W, ah = (gControls && !ctrlOverlay) ? GAME_H : SCR_H;
   int w, h;
   int mode = curScale() % NUM_SCALES;
   if (vSys == SYS_NES && mode < 2) mode = 3;      // NES: 1.5x modes show as Fit
@@ -5034,7 +5128,10 @@ static void runGame(const RomEntry &r) {
       lastDrawnPad = newPad;
     }
     // only touch presses are echoed on screen (redrawing costs SPI time)
-    if (gControls && (newPad != lastDrawnPad || menuDown != lastMenuDown)) {
+    // the overlay is painted over the game, so every frame erases it and it goes back
+    // on after each one; the panel in portrait only changes when a button does
+    if (gControls && (ctrlOverlay ? cfg.padLand == 2
+                                  : (newPad != lastDrawnPad || menuDown != lastMenuDown))) {
       waitDisplayIdle();
       drawControls(newPad, menuDown);
       lastDrawnPad = newPad;
@@ -5371,7 +5468,10 @@ static void runNes(const RomEntry &r) {
       enterGameScreen(newPad);
       lastDrawnPad = newPad;
     }
-    if (gControls && (newPad != lastDrawnPad || menuDown != lastMenuDown)) {
+    // the overlay is painted over the game, so every frame erases it and it goes back
+    // on after each one; the panel in portrait only changes when a button does
+    if (gControls && (ctrlOverlay ? cfg.padLand == 2
+                                  : (newPad != lastDrawnPad || menuDown != lastMenuDown))) {
       waitDisplayIdle();
       drawControls(newPad, menuDown);
       lastDrawnPad = newPad;
