@@ -622,8 +622,15 @@ async function flash(sel, btn) {
     const path = man.builds[0].parts[0].path;
     log('\n--- ' + man.name + ' ' + man.version + ' ---\n');
     log('reading ' + path + '\n');
-    const data = new Uint8Array(await (await fetch('firmware/' + path, { cache: 'no-store' })).arrayBuffer());
-    log(data.length.toLocaleString() + ' bytes\n');
+    const bytes = new Uint8Array(await (await fetch('firmware/' + path, { cache: 'no-store' })).arrayBuffer());
+    log(bytes.length.toLocaleString() + ' bytes\n');
+    // esptool-js wants the image as a binary string, one character per byte - hand it a
+    // Uint8Array and it fails inside writeFlash with "t.charCodeAt is not a function".
+    // Built in chunks because String.fromCharCode is given one argument per byte and a
+    // megabyte of them at once overflows the stack.
+    let data = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      data += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
 
     const port = await navigator.serial.requestPort();
     transport = new Transport(port, true);
