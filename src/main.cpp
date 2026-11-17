@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.25.1"
+#define APP_VERSION "2.26.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -1139,7 +1139,7 @@ static uint16_t headerColor(int y) {
 
 // ---- menu animation: header stars, a shine along the bronze edge, the glowing
 // selected row and scrolling names. uiTick() is called from every menu's wait loop. ----
-#define HDR_STARS 14
+#define HDR_STARS 22
 static struct { int16_t x, y; uint8_t ph; } hdrStar[HDR_STARS];
 static int hdrX0 = 0, hdrX1 = 0;     // free part of the header (no title or buttons)
 static bool hdrOn = false;
@@ -1214,10 +1214,31 @@ static void uiTick() {
       int x = hdrStar[i].x, y = hdrStar[i].y;
       if (x < hdrX0 || x >= hdrX1) continue;
       int b = (int)(128 + 127 * sinf(now * 0.004f + hdrStar[i].ph * 0.0245f));
-      b = b < 90 ? 0 : (b - 90) * 255 / 165;
-      uint32_t bgc = 0;   // header color at this row, as RGB888
-      { uint16_t c = headerColor(y); bgc = ((c >> 11) << 19) | (((c >> 5) & 63) << 10) | ((c & 31) << 3); }
-      lcd.drawPixel(x, y, mixHex(bgc, t.text, b));
+      // Fade in from 45 rather than 90: below that the old curve simply switched a star
+      // off, so most of them were dark at any moment and none was ever bright.
+      b = b < 45 ? 0 : (b - 45) * 255 / 210;
+      // Near the peak the colour runs toward white, so the theme still tints the
+      // mid-range and only the brightest few go truly white.
+      uint32_t tint = t.text;
+      if (b > 217) {
+        int k = (b - 217) * 255 / 38;
+        uint32_t cr = (t.text >> 16) & 255, cg = (t.text >> 8) & 255, cb = t.text & 255;
+        cr += (255 - cr) * k / 255; cg += (255 - cg) * k / 255; cb += (255 - cb) * k / 255;
+        tint = (cr << 16) | (cg << 8) | cb;
+      }
+      // Every pixel of the footprint is painted every tick, at zero when it is not lit,
+      // so a star erases its own flare as it fades instead of leaving specks behind.
+      auto px = [&](int ax, int ay, int lvl) {
+        if (ax < hdrX0 || ax >= hdrX1 || ay < 2 || ay > 28) return;
+        uint16_t c = headerColor(ay);
+        uint32_t bg = ((c >> 11) << 19) | (((c >> 5) & 63) << 10) | ((c & 31) << 3);
+        lcd.drawPixel(ax, ay, mixHex(bg, tint, lvl));
+      };
+      int wide = b > 190 ? (b - 190) * 255 / 65 : 0;   // core swells to 2x2 at the peak
+      int fa   = b > 217 ? (b - 217) * 255 / 38 : 0;   // four-point flare
+      px(x, y, b);
+      px(x + 1, y, wide); px(x, y + 1, wide); px(x + 1, y + 1, wide);
+      px(x - 2, y, fa); px(x + 2, y, fa); px(x, y - 2, fa); px(x, y + 2, fa);
     }
     // a light runs along the bronze edge every few seconds
     static int shineLast = -100;
