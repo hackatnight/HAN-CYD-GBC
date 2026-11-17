@@ -4,7 +4,7 @@
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
 "CYD2USB", the 2.8" JC2432W328C, the 3.2" ESP32-2432S032C and ESP32-2432S032R, the 3.5" ESP32-3248S035C and
 ESP32-3248S035R, the touch-less ESP32-2432S024N and ESP32-2432S032N, the ESP32-2432S028R Plus, and the Elecrow CrowPanel ESP32 2.4" and
-2.8"**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
+2.8" (including the 2.4" "ESP32 Solo Miner LCD", SKU DHM04624D)**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
@@ -31,6 +31,7 @@ and a one-click web flasher.
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
+- Board note: [Elecrow ESP32 Solo Miner LCD 2.4" - the touchscreen reads GPIO4, not GPIO12](docs/elecrow-esp32-solo-miner-2.4-touch.md)
 - [Credits and licenses](#credits-and-licenses)
 
 > The menu pictures in this README are illustrations drawn from the firmware's own layout and colors,
@@ -57,7 +58,7 @@ and a one-click web flasher.
 | **JC2432W328C** | 2.8" ST7789 IPS, CST820 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S024N** | 2.4" ILI9341, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S032N** | 3.2" ST7789 IPS, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **Elecrow CrowPanel ESP32 2.4" / 2.8"** | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br>incl. the 2.4" **Solo Miner** (SKU DHM04624D) | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 | ✅ | ✅ |
 
 ✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
 
@@ -91,7 +92,11 @@ pin (21 on the 2.8" CYDs, 27 on the others), the touch chip and the screen chip.
 - **Elecrow CrowPanel ESP32 HMI 2.4" and 2.8":** one build for both (the original ESP32-WROOM versions, *not* the
   "Advance" ESP32-S3 ones). They're wired like the 2.4" R (ILI9341, resistive touch on the screen's bus, backlight 27,
   same SD card and speaker pins), with two differences: there's no RGB LED, so the LED settings are left out (its
-  pins 16 and 17 go to the UART1 connector instead), and there's no touch interrupt line, so touch is polled.
+  pins 16 and 17 go to the UART1 connector instead), and the touch chip's pen interrupt is on GPIO36.
+  This build also covers the **2.4" ESP32 Solo Miner LCD** (SKU `DHM04624D`, sold as a Bitcoin solo miner
+  display), which is the same board with one wiring difference: its touch chip answers on **GPIO4**, not
+  GPIO12. If touch does nothing on one of these, that pin is almost certainly why -
+  see **[Elecrow ESP32 Solo Miner LCD 2.4" - the touchscreen reads GPIO4, not GPIO12](docs/elecrow-esp32-solo-miner-2.4-touch.md)**.
   The CrowPanel 3.5" isn't supported yet (ILI9488 screen, two hardware versions with different pins).
 
 ### Boards with no touch screen
@@ -711,6 +716,7 @@ licensed games.
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
 | Touch is off | *Setup → Display & touch → Calibrate touch*. |
+| Touch does nothing at all on an Elecrow 2.4" board | If it's the **ESP32 Solo Miner LCD** (SKU `DHM04624D`), its touch chip answers on GPIO4, not GPIO12 like every other board of this family - fixed in 2.20.0, so flash that or later. Background: [the touchscreen reads GPIO4, not GPIO12](docs/elecrow-esp32-solo-miner-2.4-touch.md). |
 | Controller won't pair | Bluetooth build only. Open *Pair new controller* first, then put the controller in pairing mode (PS4: SHARE + PS; PS5: CREATE + PS; Xbox: pair button; Switch Pro: sync button). If it paired with another device before, *Forget all controllers* and try again. Xbox controllers may need a firmware update (Xbox Accessories app) for Bluetooth. |
 | A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |
 | No cheats for a game | The `.cht` file name must match the game's name (case, punctuation and `( )` / `[ ]` tags are ignored). Rename the file if needed. |

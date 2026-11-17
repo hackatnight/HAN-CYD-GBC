@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" width="760" height="330" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <rect width="760" height="330" fill="#ffffff"/>
+  <text x="380" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#111">Elecrow ESP32 Solo Miner LCD 2.4" — XPT2046 touch wiring</text>
+  <text x="380" y="52" text-anchor="middle" font-size="13" fill="#555">from Eagle_SCH&amp;PCB/1.0 — the data line is GPIO4, not GPIO12</text>
+
+  <rect x="40" y="80" width="190" height="210" rx="8" fill="#eef4fb" stroke="#2f6fb0" stroke-width="2"/>
+  <text x="135" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6fb0">ESP32-WROOM-32 (U24)</text>
+  <rect x="530" y="80" width="190" height="210" rx="8" fill="#f6f0fa" stroke="#7a4fa3" stroke-width="2"/>
+  <text x="625" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#7a4fa3">XPT2046 (U3)</text>
+
+  <g font-size="13" fill="#111">
+    <text x="60" y="142">GPIO14</text><text x="700" y="142" text-anchor="end">DCLK</text>
+    <text x="60" y="180">GPIO13</text><text x="700" y="180" text-anchor="end">DIN</text>
+    <text x="60" y="218" font-weight="700" fill="#1a7f37">GPIO4</text><text x="700" y="218" text-anchor="end" font-weight="700" fill="#1a7f37">DOUT</text>
+    <text x="60" y="256">GPIO33</text><text x="700" y="256" text-anchor="end">CS</text>
+    <text x="60" y="283">GPIO36</text><text x="700" y="283" text-anchor="end">PENIRQ</text>
+  </g>
+
+  <g stroke-width="2" fill="none">
+    <line x1="140" y1="137" x2="530" y2="137" stroke="#666"/>
+    <line x1="140" y1="175" x2="530" y2="175" stroke="#666"/>
+    <line x1="140" y1="213" x2="530" y2="213" stroke="#1a7f37" stroke-width="3.5"/>
+    <line x1="140" y1="251" x2="530" y2="251" stroke="#666"/>
+    <line x1="140" y1="278" x2="530" y2="278" stroke="#666"/>
+  </g>
+  <g font-size="11" fill="#777" text-anchor="middle">
+    <text x="335" y="131">shared with the display (J1.SCL)</text>
+    <text x="335" y="169">shared with the display (J1.SDA)</text>
+    <text x="335" y="207" fill="#1a7f37" font-weight="700" font-size="12">net IO4_TFT_SDO/TP_OUT — touch only</text>
+    <text x="335" y="245">dedicated</text>
+    <text x="335" y="272">low while pressed</text>
+  </g>
+
+  <rect x="250" y="296" width="260" height="26" rx="5" fill="#fdeaea" stroke="#c23b3b" stroke-width="1.5"/>
+  <text x="380" y="313" text-anchor="middle" font-size="12.5" fill="#a32020" font-weight="600">GPIO12 is not connected on this board</text>
+</svg>
