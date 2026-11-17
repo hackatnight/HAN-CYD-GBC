@@ -40,7 +40,7 @@ export function startHero(canvas) {
   for (let i = 0; i < STARS; i++) st.push({ x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: rnd() });
   const t0 = performance.now();
 
-  function frame(now) {
+  function draw(now) {
     const t = (now - t0) / 1000;
     // where we are in the theme cycle
     const span = HOLD + FADE, k = ((now - t0) % (span * THEMES.length)) / span;
@@ -103,7 +103,14 @@ export function startHero(canvas) {
       loop(fx, fy, mix(accent, accent, 0));
       p += n;
     }
-    requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+
+  // Paint one frame straight away, so the header is never an empty black box, then
+  // animate. If requestAnimationFrame never runs - a throttled or backgrounded page, or
+  // a browser that holds it back - fall back to a timer rather than showing nothing.
+  draw(performance.now());
+  let ticked = false;
+  const loop = now => { ticked = true; draw(now); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  setTimeout(() => { if (!ticked) setInterval(() => draw(performance.now()), 40); }, 700);
 }
