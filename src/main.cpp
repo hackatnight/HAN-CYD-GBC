@@ -265,7 +265,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.25"
+#define APP_VERSION "2.19.26"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3210,6 +3210,67 @@ static void xptReportSerial() {
     Serial.printf("    cs%d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", PIN_TP_CS,
                   d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
                   got ? "<-- THE CHIP ANSWERS" : "(nothing)");
+  }
+
+  // Can the data line go high at all?
+  //
+  // It reads low with the screen deselected, through a pull-up, on every read. A pin
+  // that cannot go high can never carry an answer, so before blaming any chip, find out
+  // whether this one can. The ESP32's own driver is push-pull and beats any sane
+  // pull-down resistor: drive it high, read it back, drive it low, read it back.
+  //
+  // High then low means the line is free and a pull-down was all we were seeing, and the
+  // touch chip simply is not driving it. Low both ways means the line is tied down hard,
+  // and no firmware can fix that.
+  //
+  // Safe on this pin: the screen only ever writes, so it never reads GPIO12.
+  {
+    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+    lcd.endWrite();
+    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);
+    pinMode(PIN_LCD_MISO, OUTPUT);
+    digitalWrite(PIN_LCD_MISO, HIGH); delayMicroseconds(400);
+    int hi = digitalRead(PIN_LCD_MISO);
+    digitalWrite(PIN_LCD_MISO, LOW);  delayMicroseconds(400);
+    int lo = digitalRead(PIN_LCD_MISO);
+    pinMode(PIN_LCD_MISO, INPUT);
+    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
+    if (lcdMutex) xSemaphoreGive(lcdMutex);
+    Serial.printf("  driving GPIO%d: high reads %d, low reads %d  -> %s\n",
+                  PIN_LCD_MISO, hi, lo,
+                  hi ? "the line is free; nothing is driving it"
+                     : "the line is tied low in hardware");
+  }
+
+  // And the data pins again, this time done properly.
+  //
+  // This sweep ran once before and found nothing, but it ran without taking the screen
+  // off the bus, so a selected display could have been holding the line the whole time.
+  // Through the Arduino library, which has now proved it does not upset anything.
+  {
+    static const int MISO_TRY[] = { 12, 39, 35, 34 };
+    static const uint8_t seq[8] = { 0x91, 0, 0xB1, 0, 0xD1, 0, 0xC1, 0 };
+    uint8_t d[8];
+    SPIClass sw(HSPI);
+    Serial.println("  data pin sweep, screen deselected:");
+    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+    lcd.endWrite();
+    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);
+    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
+      sw.begin(PIN_LCD_SCLK, MISO_TRY[k], PIN_LCD_MOSI, -1);
+      sw.beginTransaction(SPISettings(TOUCH_SPI_HZ, MSBFIRST, SPI_MODE0));
+      digitalWrite(PIN_TP_CS, LOW);
+      for (int i = 0; i < 8; i++) d[i] = sw.transfer(seq[i]);
+      digitalWrite(PIN_TP_CS, HIGH);
+      sw.endTransaction();
+      sw.end();
+      bool got = false;
+      for (int i = 0; i < 8; i++) if (d[i] != 0x00 && d[i] != 0xFF) got = true;
+      Serial.printf("    in%-3d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", MISO_TRY[k],
+                    d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], got ? "<-- ANSWERS" : "");
+    }
+    lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, BUS_DMA_CH);
+    if (lcdMutex) xSemaphoreGive(lcdMutex);
   }
 
   // One arrangement never tested: the touch chip on the SD card's bus.

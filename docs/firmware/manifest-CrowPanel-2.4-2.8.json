@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the Elecrow CrowPanel ESP32 2.4\" / 2.8\" (resistive touch)",
-  "version": "2.19.25",
+  "version": "2.19.26",
   "new_install_prompt_erase": true,
   "builds": [
     {
