@@ -58,7 +58,7 @@ and a one-click web flasher.
 | **JC2432W328C** | 2.8" ST7789 IPS, CST820 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S024N** | 2.4" ILI9341, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
 | **ESP32-2432S032N** | 3.2" ST7789 IPS, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br>incl. the 2.4" **Solo Miner** (SKU DHM04624D) | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 | ✅ | ✅ |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br>incl. the 2.4" **Solo Miner** (SKU DHM04624D) | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | ✅ | ✅ |
 
 ✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
 
