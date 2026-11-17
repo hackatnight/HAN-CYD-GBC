@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.29.0"
+#define APP_VERSION "2.30.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -6290,8 +6290,16 @@ void setup() {
 
   sdInit();
   if (sdOk) scanRoms();
-  Serial.printf("SD %s, %d ROMs, heap free %u, largest %u\n", sdOk ? "ok" : "FAIL", (int)roms.size(),
+  // roms[] is this folder's listing, not every game on the card: it holds sub-folders
+  // and the Continue / Favorites / Recent / Most played rows as well as games, and the
+  // card is only ever listed one folder at a time to keep the RAM down. Calling that
+  // figure "ROMs" made the board look like it had found nine games when it had found
+  // nine rows in /Roms, most of them folders.
+  Serial.printf("SD %s, %s: %d rows, %d game%s in this folder; heap free %u, largest %u\n",
+                sdOk ? "ok" : "FAIL", curDir.c_str(), (int)roms.size(), romFiles,
+                romFiles == 1 ? "" : "s",
                 heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  { std::vector<MenuItem> it; sysInfoCollect(it); sysInfoSerial(it); }   // what this board is
   splashFinish();   // lets the animation finish (tap to skip) and frees its memory
 #if TOUCH_ASK_CAL
   // A resistive screen needs calibrating once (Setup > Display & touch can redo it).
