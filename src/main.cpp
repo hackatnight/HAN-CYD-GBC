@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.19"
+#define APP_VERSION "2.19.20"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3139,6 +3139,47 @@ static void xptReportSerial() {
   digitalWrite(PIN_TP_CS, HIGH);
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  pin %d = %d\n", WATCH[k], digitalRead(WATCH[k]));
+
+  // Then the same read done by hand.
+  //
+  // Everything above goes through the SPI peripheral, the way LovyanGFX does it. The
+  // firmware these boards ship with uses TFT_eSPI, which drives the chip through the
+  // Arduino SPI library instead, and its touch demonstrably works on this exact board
+  // with this exact wiring. So the question is no longer which pins - it is whether our
+  // way of talking to them works here. Clocking the pins by hand answers that: if this
+  // returns real numbers while the peripheral returns zeros, the wiring is fine and the
+  // peripheral path is the bug.
+  {
+    const int sclk = PIN_LCD_SCLK, mosi = PIN_LCD_MOSI, miso = PIN_LCD_MISO;
+    uint16_t v[3];
+    static const uint8_t cmd[3] = { 0xD0, 0x90, 0xB0 };   // X, Y, pressure
+    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
+    pinMode(mosi, OUTPUT);
+    pinMode(miso, INPUT);
+    pinMode(PIN_TP_CS, OUTPUT);
+    for (int c = 0; c < 3; c++) {
+      uint32_t r = 0;
+      digitalWrite(PIN_TP_CS, LOW);
+      for (int i = 7; i >= 0; i--) {
+        digitalWrite(mosi, (cmd[c] >> i) & 1);
+        digitalWrite(sclk, HIGH); delayMicroseconds(3);
+        digitalWrite(sclk, LOW);  delayMicroseconds(3);
+      }
+      for (int i = 0; i < 16; i++) {
+        digitalWrite(sclk, HIGH); delayMicroseconds(3);
+        r = (r << 1) | (digitalRead(miso) ? 1 : 0);
+        digitalWrite(sclk, LOW);  delayMicroseconds(3);
+      }
+      digitalWrite(PIN_TP_CS, HIGH);
+      v[c] = (uint16_t)((r >> 3) & 0x0FFF);
+      delayMicroseconds(50);
+    }
+    // hand the bus straight back before anything else can want it
+    lgfx::spi::init(HSPI_HOST, sclk, miso, mosi);
+    Serial.printf("  by hand on %d/%d/%d cs%d: x=%u y=%u z=%u  %s\n",
+                  sclk, mosi, miso, PIN_TP_CS, v[0], v[1], v[2],
+                  (v[0] || v[1] || v[2]) ? "<-- THE CHIP ANSWERS" : "(nothing)");
+  }
 
   // The data line last, because testing it borrows the pin from the screen's bus. Only
   // GPIO12 is touched, and only as an input - the screen writes on 13/14/15/2 and never

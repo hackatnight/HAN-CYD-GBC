@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC Touch only",
-  "version": "2.19.19",
+  "version": "2.19.20",
   "new_install_prompt_erase": true,
   "builds": [
     { "chipFamily": "ESP32", "parts": [ { "path": "HAN-CYD-GBC-touch.bin", "offset": 0 } ] }
