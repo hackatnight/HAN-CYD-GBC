@@ -57,9 +57,11 @@
 //   BOARD_028PLUS 2.8" ESP32-2432S028R Plus (ESP32-WROOM-32E, USB-C, sold in NerdMiner kits):
 //                 as the 2.8" R, but an ST7789 screen without inversion, the RGB LED on
 //                 17 / 22 / 16, and the speaker amplifier switched on by GPIO4
-//   BOARD_CROW    Elecrow CrowPanel ESP32 2.4" / 2.8" (ESP32-WROOM versions): like the 2.4" R
-//                 (resistive XPT2046 on the screen's bus), but no RGB LED (GPIO16/17 are its
-//                 UART1 port) and no touch interrupt line
+//   BOARD_CROW    Elecrow CrowPanel ESP32 2.4" / 2.8" (ESP32-WROOM versions), and the same
+//                 board sold as the ESP32 Solo Miner LCD: like the 2.4" R (resistive XPT2046
+//                 on the screen's bus, pen interrupt on GPIO36) but no RGB LED. Its
+//                 connectors take the pins a separate touch bus would need: GPIO_D has
+//                 IO25/IO32, I2C has IO21/IO22, UART1 has IO16/IO17, SPK has IO26.
 // All are the original ESP32 (4 MB flash, no PSRAM), same SD card, speaker (GPIO26),
 // RGB LED (4/16/17) and BOOT button. All but the 3.5" are 240x320; the 3.5" shows the
 // same 240x320 picture in the middle of its screen.
@@ -160,7 +162,11 @@
 #define BOARD_NAME "CrowPanel-ESP32-2.4-2.8"
 #define TOUCH_KIND TOUCH_XPT_BUS
 #define BL_PIN 27
-#define TP_INT_PIN -1      // no touch interrupt line: touch is polled
+// The touch chip's pen interrupt is on GPIO36, measured on a Solo Miner board: it sits
+// high and goes low while the panel is pressed. This was -1 (polled) on the guess that
+// the line was not brought out, and polled is not the same thing - the driver then has
+// to decide from pressure alone whether a press is real, and on this board it never did.
+#define TP_INT_PIN 36
 #define HAS_LED 0          // no RGB LED; GPIO16/17 go to the UART1 connector
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
@@ -245,7 +251,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.10"
+#define APP_VERSION "2.19.11"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3036,7 +3042,7 @@ static uint16_t xptRead(int sclk, int mosi, int miso, int cs, uint8_t cmd) {
     digitalWrite(sclk, LOW);  delayMicroseconds(2);
   }
   digitalWrite(cs, HIGH);
-  return (uint16_t)(v >> 4);
+  return (uint16_t)((v >> 3) & 0x0FFF);
 }
 static uint16_t xptProbeRead(uint8_t cmd) {
   return xptRead(PROBE_SCLK, PROBE_MOSI, PROBE_MISO, PIN_TP_CS, cmd);
@@ -3044,45 +3050,52 @@ static uint16_t xptProbeRead(uint8_t cmd) {
 
 // Which pins is the touch chip actually on?
 //
-// Pressure only answers that when someone is pressing, so this asks the chip
-// instead: command 0x87 reads the XPT2046's own temperature sensor, which replies
-// with a mid-range number whenever the chip is powered and listening, touched or
-// not. A wiring with nothing on it floats to 0 or 4095. So a plausible reading here
-// means "the chip is on these pins" and a stuck one means "it is not", with no
-// finger involved.
+// GPIO 36 going low under a press proved the XPT2046 is on this board and watching the
+// panel: that pin is its pen-interrupt output. So it is there, powered, and simply not
+// answering on the pins tried so far. This board has no room for a touch bus of its own
+// - 25/32 go to the GPIO_D connector, 16/17 to UART1, 21/22 to I2C - so the chip almost
+// certainly shares the screen's SPI bus, and the pin that was never varied is the chip
+// select.
 //
-// Only pins the screen does not use are driven. The screen's own bus is read through
-// the configured driver instead, because bit-banging those pins would take them away
-// from the display driver and cost the picture.
+// Command 0x87 reads the chip's internal temperature sensor, which answers with a
+// mid-range number whenever the chip is selected and listening, touched or not. A
+// wiring with nothing on it floats to 0 or 4095.
+//
+// Sweeping the screen's bus means borrowing its pins, so the display is re-initialised
+// afterwards and the screen is drawn after the sweep, not before: nothing to see.
+// The pins a touch interrupt could sit on: the input-only ones and the two free GPIOs.
+// None is used by the screen, the SD card, the speaker or the backlight.
 static const int WATCH[] = { 36, 39, 34, 35, 21, 22 };
 
+static char scanResult[6][40];
+static int scanHits;
+
 static void xptProbeScan() {
-  static const int MISO_TRY[] = { 39, 35, 36, 34 };
-  char line[40];
-  int y = 114;
-  lcd.setTextColor(C_DIM, C_BG);
-  lcd.drawString("chip answers on: (t=temp, 1-4094 = alive)", 8, y); y += 18;
-  pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
-  for (int swap = 0; swap < 2; swap++) {
-    int sclk = swap ? 32 : 25, mosi = swap ? 25 : 32;
-    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
-    pinMode(mosi, OUTPUT);
-    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
-      int miso = MISO_TRY[k];
-      pinMode(miso, INPUT);
-      uint16_t t = xptRead(sclk, mosi, miso, PIN_TP_CS, 0x87);
-      bool alive = t > 0 && t < 4095;
-      snprintf(line, sizeof line, "clk%d dat%d in%d cs%d t=%4u %s",
-               sclk, mosi, miso, PIN_TP_CS, t, alive ? "<-- ALIVE" : "");
-      lcd.setTextColor(alive ? C_GREEN : C_DIM, C_BG);
-      lcd.drawString(line, 8, y); y += 16;
+  static const int CS_TRY[] = { 33, 4, 16, 17, 21, 22, 25, 32 };
+  static const int MISO_TRY[] = { 12, 39, 35, 34 };
+  int tried = 0;
+  scanHits = 0;
+  for (unsigned m = 0; m < sizeof MISO_TRY / sizeof *MISO_TRY; m++) {
+    int miso = MISO_TRY[m];
+    pinMode(PIN_LCD_SCLK, OUTPUT); digitalWrite(PIN_LCD_SCLK, LOW);
+    pinMode(PIN_LCD_MOSI, OUTPUT);
+    pinMode(miso, INPUT);
+    for (unsigned k = 0; k < sizeof CS_TRY / sizeof *CS_TRY; k++) {
+      int cs = CS_TRY[k];
+      if (cs == miso) continue;
+      pinMode(cs, OUTPUT); digitalWrite(cs, HIGH);
+      uint16_t t = xptRead(PIN_LCD_SCLK, PIN_LCD_MOSI, miso, cs, 0x87);
+      tried++;
+      if (t > 0 && t < 4095 && scanHits < 6)
+        snprintf(scanResult[scanHits++], sizeof scanResult[0],
+                 "in%d cs%d t=%u  FOUND IT", miso, cs, t);
     }
   }
-  lcd.setTextColor(C_DIM, C_BG);
-  // Nothing answered over SPI, but one of these pins may still be the touch chip's
-  // interrupt line, which sits high and is pulled low the moment the panel is pressed.
-  // Watching the pins directly says whether there is a touch circuit on this board at
-  // all - a question no amount of guessing at SPI wiring can settle.
+  if (!scanHits)
+    snprintf(scanResult[scanHits++], sizeof scanResult[0], "no answer on %d wirings", tried);
+  // give the screen its bus back
+  lcd.init();
+  lcd.setBrightness(cfg.brightness);
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++) pinMode(WATCH[k], INPUT);
 }
 
@@ -3101,6 +3114,11 @@ static void xptWatchDraw(int y) {
 #endif
 
 static void touchTest() {
+#if TOUCH_KIND == TOUCH_XPT_BUS
+  // Runs first: it borrows the screen's bus and puts it back, so there is nothing on
+  // screen to disturb. The results are drawn with everything else below.
+  xptProbeScan();
+#endif
   lcd.fillScreen(C_BG);
   uiHeader("Touch test", "Done");
   lcd.setFont(&fonts::Font2);
@@ -3109,9 +3127,16 @@ static void touchTest() {
   lcd.drawString("appear under it. If not, run", 8, 58);
   lcd.drawString("Calibrate touch. BOOT/B = exit.", 8, 76);
 #if TOUCH_KIND == TOUCH_XPT_BUS
-  // Both wirings are read every pass: whichever set of numbers moves under a finger is
-  // the one this board actually uses. Report it and the board gets a proper build.
-  xptProbeScan();
+  {
+    int y = 114;
+    lcd.drawString("touch chip on the screen bus:", 8, y); y += 18;
+    for (int k = 0; k < scanHits; k++) {
+      lcd.setTextColor(strstr(scanResult[k], "FOUND") ? C_GREEN : C_DIM, C_BG);
+      lcd.drawString(scanResult[k], 8, y); y += 16;
+    }
+    lcd.setTextColor(C_DIM, C_BG);
+    lcd.drawString("press the panel and watch 36:", 8, y + 6);
+  }
 #endif
   for (int i = 0; i < 4; i++) {
     int cx = (i & 1) ? SCR_W - 20 : 20, cy = (i & 2) ? SCR_H - 20 : 110;
@@ -3138,7 +3163,7 @@ static void touchTest() {
       lcd.setTextColor(C_TEXT, C_BG);
       snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
       lcd.drawString(b, 8, 268);
-      xptWatchDraw(286);
+      xptWatchDraw(268);
     }
 #endif
     delay(10);
