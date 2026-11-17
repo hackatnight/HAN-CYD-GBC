@@ -20,6 +20,8 @@
 #include "ff.h"          // FatFs: folder listing with sizes in one pass (see listDirFat)
 #include <esp_spi_flash.h>
 #include <driver/i2s.h>
+#include <soc/spi_periph.h>   // spi_periph_signal: which signal index is this host's data input
+#include <esp_rom_gpio.h>     // esp_rom_gpio_connect_in_signal: point that input at a pin
 #include <vector>
 #include <algorithm>
 #include <stdarg.h>
@@ -169,6 +171,25 @@
 #define TP_INT_PIN 36
 #define TOUCH_SPI_HZ 600000   // see TOUCH_SPI_HZ below: this panel will not read faster
 #define HAS_LED 0          // no RGB LED; GPIO16/17 go to the UART1 connector
+// Which pin carries the touch chip's answer. On the CYD and on Elecrow's own CrowPanel
+// 2.4 it is the screen's MISO, GPIO12. Not on the Solo Miner. Its Eagle schematic puts
+// the XPT2046's DOUT on GPIO4 - net IO4_TFT_SDO/TP_OUT, with U3.DOUT the only thing on
+// it - and leaves GPIO12 on a net called plain IO12 that reaches nothing but the pad of
+// an unfitted resistor.
+//
+// That single pin accounts for every reading this board has given us. Driving GPIO12
+// high and low read back high and low, which we read as "the chip is not driving it"
+// when it meant "nothing is attached to it". All eight chip selects returned zeros
+// because the chip select was never the problem: the answer was arriving on a pin we
+// were not reading. And the pen interrupt kept working throughout, because the chip was
+// powered and sensing the whole time.
+//
+// Elecrow's own example configs contradict each other here - one ESPHome file says
+// miso_pin 33, which is the chip select, another says 12, and neither of them enables
+// touch at all, so nobody ever found out. The netlist generated from the PCB is the
+// authority, and the screen has no SDO pin on its connector, so this bus's MISO is only
+// ever used by the touch chip.
+#define PIN_LCD_MISO 4
 #elif defined(BOARD_024R)
 #define BOARD_NAME "ESP32-2432S024R"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -220,7 +241,9 @@
 // ----------------------------------------------------------------------------
 #define PIN_LCD_SCLK 14
 #define PIN_LCD_MOSI 13
+#ifndef PIN_LCD_MISO
 #define PIN_LCD_MISO 12
+#endif
 #define PIN_LCD_DC    2
 #define PIN_LCD_CS   15
 #define PIN_LCD_BL   BL_PIN
@@ -265,7 +288,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.27"
+#define APP_VERSION "2.20.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3095,7 +3118,50 @@ static bool xptReadWith(int cs, uint8_t *d) {
 // candidate pins are driven, and none of them belongs to the screen, the SD card, the
 // speaker or the backlight, so nothing can be taken away from the display. That is what
 // wedged the board in 2.19.11, and it does not happen here.
-static const int CS_TRY[] = { 33, 4, 16, 17, 21, 22, 25, 32 };
+// Point the screen bus's data input at a given pin, without disturbing the bus itself.
+//
+// Re-routing one input signal is all that is needed to ask "does the answer arrive on
+// this pin?", and it is the safe way to do it. lgfx::spi::init would also re-point the
+// pin, but it re-initialises the entire bus and in doing so resets its DMA channel to
+// zero, and that - not the act of restoring - is what froze this board in 2.19.11,
+// 2.19.20 and 2.19.23. This touches no bus register, no clock and no DMA.
+static void xptPointDataAt(int pin) {
+  pinMode(pin, INPUT_PULLUP);   // what LovyanGFX's own software-SPI path uses for miso
+  esp_rom_gpio_connect_in_signal(pin, spi_periph_signal[HSPI_HOST].spiq_in, false);
+}
+
+// Which pin is the touch chip actually answering on?
+//
+// Every earlier sweep varied the chip select and left the data pin alone, so a wrong
+// data pin would have looked exactly like a dead chip: all zeros, on every chip select,
+// through every driver. This varies the data pin instead and reads the chip the same way
+// the driver does, so the log names the pin that carries the answer rather than leaving
+// it to be inferred.
+static const int MISO_TRY[] = { 4, 12, 39, 35, 34 };
+
+static void xptDataSweep(void) {
+  uint8_t d[57];
+  Serial.println("  which pin carries the answer (bus data input re-pointed each try):");
+  if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  lcd.endWrite();
+  pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);  // screen cannot answer
+  pinMode(PIN_TP_CS,  OUTPUT); digitalWrite(PIN_TP_CS,  HIGH);
+  for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
+    int pin = MISO_TRY[k];
+    xptPointDataAt(pin);
+    bool got = xptReadWith(PIN_TP_CS, d);
+    Serial.printf("    in%-3d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", pin,
+                  d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
+                  got ? "<-- the answer arrives here" : "");
+  }
+  xptPointDataAt(PIN_LCD_MISO);   // leave it on the pin this board actually uses
+  if (lcdMutex) xSemaphoreGive(lcdMutex);
+}
+
+// GPIO4 is deliberately absent. On the Solo Miner that pin is the touch chip's own data
+// output, so driving it as a candidate chip select pushed against the chip we were
+// trying to read.
+static const int CS_TRY[] = { 33, 16, 17, 21, 22, 25, 32 };
 
 static void xptCsSweep(char *out, size_t n) {
   uint8_t d[57];
@@ -3233,10 +3299,11 @@ static void xptReportSerial() {
     int hi = digitalRead(PIN_LCD_MISO);
     digitalWrite(PIN_LCD_MISO, LOW);  delayMicroseconds(400);
     int lo = digitalRead(PIN_LCD_MISO);
-    pinMode(PIN_LCD_MISO, INPUT);
-    // deliberately not handing this pin back to the SPI peripheral. The screen only
-    // writes and never reads it, so leaving it a plain input costs nothing - and every
-    // attempt to hand this bus back has been what froze the board.
+    // Hand the pin back to the SPI peripheral's data input. Every previous attempt to
+    // restore this bus called lgfx::spi::init, which re-initialises the whole bus and
+    // resets its DMA channel - that is what froze the board, not the restoring itself.
+    // Pointing one input signal back at one pin touches no bus state and no DMA.
+    xptPointDataAt(PIN_LCD_MISO);
     if (lcdMutex) xSemaphoreGive(lcdMutex);
     Serial.printf("  driving GPIO%d: high reads %d, low reads %d  -> %s\n",
                   PIN_LCD_MISO, hi, lo,
@@ -3271,6 +3338,8 @@ static void xptReportSerial() {
     }
     pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
   }
+
+  xptDataSweep();
 
   // Now the pull test, with the screen deselected so it cannot be the thing holding a
   // line down. Last time it ran mid-transaction, which is very likely why GPIO12 looked

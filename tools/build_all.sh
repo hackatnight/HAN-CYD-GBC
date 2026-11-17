@@ -12,6 +12,14 @@
 #   ACLI=/path/to/arduino-cli ESPTOOL=/path/to/esptool.py tools/build_all.sh
 # EXTRA_PROPS is passed to every compile, for anything your machine needs on top.
 #
+# esptool is run as a module, so pyserial has to be importable - point PYTHONPATH at a
+# pyserial checkout if it is not installed. arduino-cli also wants ctags, which it will
+# ask for as {runtime.tools.ctags.path} if its bundled copy is missing; any executable
+# that exits cleanly will do, since the sketch is already valid C++:
+#   PYTHONPATH=/path/to/pyserial ACLI=/path/to/arduino-cli \
+#   EXTRA_PROPS="--build-property runtime.tools.ctags.path=/path/to/ctags-dir" \
+#     tools/build_all.sh
+#
 # With no arguments it builds the boards someone is actually using - the ones below in
 # ACTIVE. Every other image stays as it was: rebuilding a board nobody has in their
 # hands only churns binaries nobody can test.
@@ -53,6 +61,11 @@ CrowPanel-2.4-2.8      BOARD_CROW
 "
 
 merge() {   # merge <key> <output dir>
+  if [ ! -f "$2/gbc_cyd.ino.bin" ]; then
+    echo "   FAILED: $1 produced no app image - the .bin on disk is older than these sources" >&2
+    echo "$1" >> "$WORK/failed"   # a file, because the build loop runs in a subshell
+    return 0
+  fi
   PYTHONPATH="${PYTHONPATH}" python3 "$ESPTOOL" --chip esp32 merge_bin \
     -o "$ROOT/docs/firmware/HAN-CYD-GBC-$1.bin" --flash_mode keep --flash_freq keep --flash_size keep \
     0x1000 "$2/gbc_cyd.ino.bootloader.bin" 0x8000 "$2/gbc_cyd.ino.partitions.bin" 0x10000 "$2/gbc_cyd.ino.bin" > /dev/null
@@ -68,7 +81,16 @@ wanted() {
   return 1
 }
 
+# Fail loudly and early if the toolchain is not where this script expects. A missing
+# tool used to vanish into the grep above, leaving "== board" on the log, a stale .bin on
+# disk and an exit status of zero - which is how 2.19.27 came to be committed twice, once
+# with the previous version's sources.
+command -v "$ACLI" >/dev/null 2>&1 || { echo "arduino-cli not found at: $ACLI (set ACLI=...)" >&2; exit 1; }
+[ -f "$ESPTOOL" ] || { echo "esptool.py not found at: $ESPTOOL (set ESPTOOL=...)" >&2; exit 1; }
+python3 -c "import serial" 2>/dev/null || { echo "esptool needs pyserial: set PYTHONPATH to a pyserial checkout" >&2; exit 1; }
+
 mkdir -p "$WORK"
+rm -f "$WORK/failed"
 echo "$BUILDS" | while read -r KEY FLAG; do
   [ -z "$KEY" ] && continue
   wanted "$@" || continue
@@ -77,7 +99,7 @@ echo "$BUILDS" | while read -r KEY FLAG; do
   [ "$FLAG" != "-" ] && EXTRA="--build-property compiler.cpp.extra_flags=-D$FLAG"
   "$ACLI" compile --fqbn "$BT_FQBN" --build-property upload.maximum_size=$BT_MAX $EXTRA_PROPS \
     $EXTRA --build-path "$WORK/b_$KEY" --output-dir "$WORK/o_$KEY" "$ROOT" 2>&1 \
-    | grep -E "Sketch uses|error:|Error during" | grep -v initializing
+    | grep -E "Sketch uses|error:|Error during" | grep -v initializing || true
   merge "$KEY" "$WORK/o_$KEY"
 done
 
@@ -93,8 +115,12 @@ if wanted "$@"; then
   cp "$ROOT/partitions_touch.csv" "$WORK/sk_touch/gbc_cyd/partitions.csv"
   "$ACLI" compile --fqbn "$PLAIN_FQBN" --build-property upload.maximum_size=$TOUCH_MAX $EXTRA_PROPS \
     --build-path "$WORK/b_touch" --output-dir "$WORK/o_touch" "$WORK/sk_touch/gbc_cyd" 2>&1 \
-    | grep -E "Sketch uses|error:|Error during" | grep -v initializing
+    | grep -E "Sketch uses|error:|Error during" | grep -v initializing || true
   merge touch "$WORK/o_touch"
 fi
 
+if [ -s "$WORK/failed" ]; then
+  echo "FAILED: $(tr '\n' ' ' < "$WORK/failed")- the .bin files for these are stale, do not release" >&2
+  exit 1
+fi
 echo "done - now run: python3 tools/release_check.py"
