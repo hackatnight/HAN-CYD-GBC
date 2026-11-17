@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.30.0"
+#define APP_VERSION "2.31.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -391,7 +391,13 @@ public:
       auto c = light.config();
       c.pin_bl = PIN_LCD_BL;
       c.invert = false;
-      c.freq = 12000;
+      // Above hearing, deliberately. 12 kHz sat right in the audible range, and the
+      // backlight draws its current in pulses at this frequency from the same 3.3 V rail
+      // that feeds the speaker amplifier - whose shutdown pin is tied to ground on these
+      // boards, so it is always on and always amplifying whatever reaches it. 40 kHz
+      // moves the whine past anyone's hearing and still leaves about 10 bits of
+      // brightness resolution at the ESP32's 80 MHz LEDC clock.
+      c.freq = 40000;
       c.pwm_channel = 7;
       light.config(c);
     }
