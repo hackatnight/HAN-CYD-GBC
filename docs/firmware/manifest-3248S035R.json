@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-3248S035R (3.5\", resistive touch)",
-  "version": "2.19.8",
+  "version": "2.19.9",
   "new_install_prompt_erase": true,
   "builds": [
     {

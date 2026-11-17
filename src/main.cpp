@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.8"
+#define APP_VERSION "2.19.9"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3022,21 +3022,62 @@ static void xptProbeBegin() {
   pinMode(PROBE_MISO, INPUT);
   pinMode(PIN_TP_CS, OUTPUT);  digitalWrite(PIN_TP_CS, HIGH);
 }
-static uint16_t xptProbeRead(uint8_t cmd) {
+static uint16_t xptRead(int sclk, int mosi, int miso, int cs, uint8_t cmd) {
   uint16_t v = 0;
-  digitalWrite(PIN_TP_CS, LOW);
+  digitalWrite(cs, LOW);
   for (int i = 7; i >= 0; i--) {              // command byte, MSB first
-    digitalWrite(PROBE_MOSI, (cmd >> i) & 1);
-    digitalWrite(PROBE_SCLK, HIGH); delayMicroseconds(2);
-    digitalWrite(PROBE_SCLK, LOW);  delayMicroseconds(2);
+    digitalWrite(mosi, (cmd >> i) & 1);
+    digitalWrite(sclk, HIGH); delayMicroseconds(2);
+    digitalWrite(sclk, LOW);  delayMicroseconds(2);
   }
   for (int i = 0; i < 16; i++) {              // 16 bits back, the top 12 are the reading
-    digitalWrite(PROBE_SCLK, HIGH); delayMicroseconds(2);
-    v = (uint16_t)((v << 1) | (digitalRead(PROBE_MISO) ? 1 : 0));
-    digitalWrite(PROBE_SCLK, LOW);  delayMicroseconds(2);
+    digitalWrite(sclk, HIGH); delayMicroseconds(2);
+    v = (uint16_t)((v << 1) | (digitalRead(miso) ? 1 : 0));
+    digitalWrite(sclk, LOW);  delayMicroseconds(2);
   }
-  digitalWrite(PIN_TP_CS, HIGH);
+  digitalWrite(cs, HIGH);
   return (uint16_t)(v >> 4);
+}
+static uint16_t xptProbeRead(uint8_t cmd) {
+  return xptRead(PROBE_SCLK, PROBE_MOSI, PROBE_MISO, PIN_TP_CS, cmd);
+}
+
+// Which pins is the touch chip actually on?
+//
+// Pressure only answers that when someone is pressing, so this asks the chip
+// instead: command 0x87 reads the XPT2046's own temperature sensor, which replies
+// with a mid-range number whenever the chip is powered and listening, touched or
+// not. A wiring with nothing on it floats to 0 or 4095. So a plausible reading here
+// means "the chip is on these pins" and a stuck one means "it is not", with no
+// finger involved.
+//
+// Only pins the screen does not use are driven. The screen's own bus is read through
+// the configured driver instead, because bit-banging those pins would take them away
+// from the display driver and cost the picture.
+static void xptProbeScan() {
+  static const int MISO_TRY[] = { 39, 35, 36, 34 };
+  char line[40];
+  int y = 114;
+  lcd.setTextColor(C_DIM, C_BG);
+  lcd.drawString("chip answers on: (t=temp, 1-4094 = alive)", 8, y); y += 18;
+  pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
+  for (int swap = 0; swap < 2; swap++) {
+    int sclk = swap ? 32 : 25, mosi = swap ? 25 : 32;
+    pinMode(sclk, OUTPUT); digitalWrite(sclk, LOW);
+    pinMode(mosi, OUTPUT);
+    for (unsigned k = 0; k < sizeof MISO_TRY / sizeof *MISO_TRY; k++) {
+      int miso = MISO_TRY[k];
+      pinMode(miso, INPUT);
+      uint16_t t = xptRead(sclk, mosi, miso, PIN_TP_CS, 0x87);
+      bool alive = t > 0 && t < 4095;
+      snprintf(line, sizeof line, "clk%d dat%d in%d cs%d t=%4u %s",
+               sclk, mosi, miso, PIN_TP_CS, t, alive ? "<-- ALIVE" : "");
+      lcd.setTextColor(alive ? C_GREEN : C_DIM, C_BG);
+      lcd.drawString(line, 8, y); y += 16;
+    }
+  }
+  lcd.setTextColor(C_DIM, C_BG);
+  xptProbeBegin();
 }
 #endif
 
@@ -3051,8 +3092,7 @@ static void touchTest() {
 #if TOUCH_KIND == TOUCH_XPT_BUS
   // Both wirings are read every pass: whichever set of numbers moves under a finger is
   // the one this board actually uses. Report it and the board gets a proper build.
-  xptProbeBegin();
-  lcd.drawString("screen bus / own pins: one should move", 8, 132);
+  xptProbeScan();
 #endif
   for (int i = 0; i < 4; i++) {
     int cx = (i & 1) ? SCR_W - 20 : 20, cy = (i & 2) ? SCR_H - 20 : 110;
@@ -3078,10 +3118,10 @@ static void touchTest() {
       readTouchRaw(bx, by);
       lcd.setTextColor(C_TEXT, C_BG);
       snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
-      lcd.drawString(b, 8, 150);
+      lcd.drawString(b, 8, 268);
       uint16_t px = xptProbeRead(0xD0), py = xptProbeRead(0x90), pz = xptProbeRead(0xB0);
       snprintf(b, sizeof b, "own  x=%4u y=%4u z=%4u ", px, py, pz);
-      lcd.drawString(b, 8, 168);
+      lcd.drawString(b, 8, 286);
     }
 #endif
     delay(10);
