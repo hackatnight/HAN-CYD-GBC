@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.27.0"
+#define APP_VERSION "2.27.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -6070,7 +6070,10 @@ static int runBrowserLoop() {
     }
     if (!readTouch(x, y)) {
       if (sdOk && !roms.empty()) { browserMarqueeRotate(); uiTick(); }
-      if (screensaverIfIdle()) drawBrowser();
+      // Ask for a full redraw rather than calling drawBrowser(): that only paints the
+      // list from y0 down, so the title bar, the Setup and A-Z buttons and the letter
+      // strip stayed blank after the screensaver had cleared the screen.
+      if (screensaverIfIdle()) return -4;
       delay(10);
       continue;
     }
