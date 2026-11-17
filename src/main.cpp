@@ -245,7 +245,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.9"
+#define APP_VERSION "2.19.10"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3054,6 +3054,8 @@ static uint16_t xptProbeRead(uint8_t cmd) {
 // Only pins the screen does not use are driven. The screen's own bus is read through
 // the configured driver instead, because bit-banging those pins would take them away
 // from the display driver and cost the picture.
+static const int WATCH[] = { 36, 39, 34, 35, 21, 22 };
+
 static void xptProbeScan() {
   static const int MISO_TRY[] = { 39, 35, 36, 34 };
   char line[40];
@@ -3077,7 +3079,24 @@ static void xptProbeScan() {
     }
   }
   lcd.setTextColor(C_DIM, C_BG);
-  xptProbeBegin();
+  // Nothing answered over SPI, but one of these pins may still be the touch chip's
+  // interrupt line, which sits high and is pulled low the moment the panel is pressed.
+  // Watching the pins directly says whether there is a touch circuit on this board at
+  // all - a question no amount of guessing at SPI wiring can settle.
+  for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++) pinMode(WATCH[k], INPUT);
+}
+
+// Live levels of the pins a touch interrupt could be on. One of them changing when the
+// panel is pressed means the touch circuit is alive and only the SPI wiring is wrong.
+// None of them changing means there is nothing wired to the panel to find.
+static void xptWatchDraw(int y) {
+  char line[48];
+  int n = 0;
+  n += snprintf(line + n, sizeof line - n, "press:");
+  for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
+    n += snprintf(line + n, sizeof line - n, " %d=%d", WATCH[k], digitalRead(WATCH[k]));
+  lcd.setTextColor(C_TEXT, C_BG);
+  lcd.drawString(line, 8, y);
 }
 #endif
 
@@ -3119,9 +3138,7 @@ static void touchTest() {
       lcd.setTextColor(C_TEXT, C_BG);
       snprintf(b, sizeof b, "bus  x=%4d y=%4d    ", bx, by);
       lcd.drawString(b, 8, 268);
-      uint16_t px = xptProbeRead(0xD0), py = xptProbeRead(0x90), pz = xptProbeRead(0xB0);
-      snprintf(b, sizeof b, "own  x=%4u y=%4u z=%4u ", px, py, pz);
-      lcd.drawString(b, 8, 286);
+      xptWatchDraw(286);
     }
 #endif
     delay(10);

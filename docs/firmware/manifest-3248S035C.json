@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the ESP32-3248S035C (3.5\", capacitive touch)",
-  "version": "2.19.9",
+  "version": "2.19.10",
   "new_install_prompt_erase": true,
   "builds": [
     {
