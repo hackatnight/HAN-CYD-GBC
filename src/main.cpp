@@ -265,7 +265,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.24"
+#define APP_VERSION "2.19.25"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3169,6 +3169,48 @@ static void xptReportSerial() {
   // at the rest costs a reset every time.
   //
   // What is left below reads pins only, which has never caused a problem.
+
+  // The one real difference left: read the chip the way the stock firmware does.
+  //
+  // Its disassembly settled the configuration - it hardcodes pinMode(33, OUTPUT) for the
+  // chip select and a pulled-up input for the interrupt, which is exactly what we use,
+  // and it drives SPI through Arduino's register code with no DMA, as we now do. Every
+  // setting matches. What differs is whose code runs the transfer: theirs is the Arduino
+  // SPI library, ours is the graphics library's own.
+  //
+  // So try theirs. Sharing the bus is safe enough here: Bus_SPI rewrites SPI_USER,
+  // SPI_PIN and SPI_CLOCK at the start of every transaction, so it re-establishes itself
+  // afterwards, and the pins are identical so the routing does not change. The screen is
+  // deselected and lcdMutex held throughout.
+  //
+  // Each step is printed before it runs. Three attempts at sharing this bus have frozen
+  // the board, and if this is a fourth the log will say exactly which line did it.
+  {
+    static SPIClass tpSPI(HSPI);
+    static bool begun = false;
+    uint8_t d[8];
+    static const uint8_t seq[8] = { 0x91, 0, 0xB1, 0, 0xD1, 0, 0xC1, 0 };
+    Serial.println("  arduino SPI on the screen bus:");
+    if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+    lcd.endWrite();
+    pinMode(PIN_LCD_CS, OUTPUT); digitalWrite(PIN_LCD_CS, HIGH);
+    Serial.println("    screen deselected");
+    if (!begun) { tpSPI.begin(PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI, -1); begun = true; }
+    Serial.println("    bus opened");
+    pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH);
+    tpSPI.beginTransaction(SPISettings(TOUCH_SPI_HZ, MSBFIRST, SPI_MODE0));
+    digitalWrite(PIN_TP_CS, LOW);
+    for (int i = 0; i < 8; i++) d[i] = tpSPI.transfer(seq[i]);
+    digitalWrite(PIN_TP_CS, HIGH);
+    tpSPI.endTransaction();
+    Serial.println("    transfer done");
+    if (lcdMutex) xSemaphoreGive(lcdMutex);
+    bool got = false;
+    for (int i = 0; i < 8; i++) if (d[i] != 0x00 && d[i] != 0xFF) got = true;
+    Serial.printf("    cs%d %02X %02X %02X %02X %02X %02X %02X %02X  %s\n", PIN_TP_CS,
+                  d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7],
+                  got ? "<-- THE CHIP ANSWERS" : "(nothing)");
+  }
 
   // One arrangement never tested: the touch chip on the SD card's bus.
   //
