@@ -15,6 +15,7 @@
     --danger: #ff6b8b; --strip: #090c18; --strip-border: #3a4272;
     --input-bg: #000000; --input-border: #4b558a;
     --btn-bg: #030612; --btn-border: #2a4880; --btn-hover: #0a1838;
+    --frame: #d0d7e5;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -141,9 +142,49 @@
   #serialState.on { color: #7ef0a0; }
   #serialState.err { color: var(--danger); }
   .legend { color: var(--dim); font-size: 14px; margin: 10px 0 0; }
+
+  /* The chassis. hackatnight.com puts everything inside a framed window - light outer
+     frame, gradient title bar, a strip of readouts, and a status line along the bottom -
+     and without it the tool sat loose on the page instead of looking like part of the
+     site. The workspace is kept black rather than the site's bright blue viewport: the
+     panels in here are deep blue already, and blue on blue is hard to read. */
+  body { padding: 14px; }
+  .win { max-width: 1000px; margin: 0 auto; border: 1px solid var(--frame); background: #000; }
+  .titlebar {
+    background: linear-gradient(90deg, #8486eb, #5b5dc7); color: #fff;
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-bottom: 1px solid #000;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .titlebar .mid { flex: 1 1 auto; text-align: center; letter-spacing: .5px; }
+  .titlebar .x { opacity: .85; }
+  .strip {
+    background: var(--strip); border-bottom: 1px solid var(--strip-border);
+    padding: 6px 10px; font-size: 12px; color: var(--dim);
+    display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center;
+  }
+  .strip b { color: var(--accent); font-weight: 400; }
+  .workspace { padding: 6px; }
+  .statusbar {
+    background: #000; border-top: 1px solid var(--strip-border); padding: 4px 10px;
+    font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap;
+    justify-content: space-between; gap: 4px 12px;
+  }
+  @media (max-width: 560px) { body { padding: 0; } .win { border-left: 0; border-right: 0; } }
 </style>
 </head>
 <body>
+<div class="win">
+  <div class="titlebar">
+    <span>&raquo; [v<span id="verTitle">-</span>]</span>
+    <span class="mid">H@N-CYD-GBC // web flasher</span>
+    <span class="x">&#10005;</span>
+  </div>
+  <div class="strip">
+    <span>board: <b>pick one below</b></span>
+    <span>link: <b>USB serial</b></span>
+    <span>flash: <b>from this page</b></span>
+  </div>
+  <div class="workspace">
 <header>
   <h1>H@N-CYD-GBC</h1>
   <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.30.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
@@ -152,6 +193,23 @@
   <canvas class="hero" id="hero" width="320" height="140"
           aria-label="The wireframe H@N logo turning over a starfield, cycling through the board's four themes"></canvas>
   <noscript><img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen"></noscript>
+  <script>
+    // One version string on the page, read from the line under the title: the chassis
+    // shows it twice more, and three hand-edited copies would drift the moment one
+    // release updated only the one the release check knows about.
+    document.addEventListener('DOMContentLoaded', () => {
+      const v = (document.body.innerText.match(/Version\s+([\d.]+)/) || [])[1] || '';
+      for (const id of ['verTitle', 'verFoot']) {
+        const e = document.getElementById(id);
+        if (e) e.textContent = v;
+      }
+      const seen = new Set();
+      for (const s of document.querySelectorAll('#sel-tested option, #sel-testing option, #sel-untested option'))
+        if (s.value) seen.add(s.value);
+      const c = document.getElementById('imgCount');
+      if (c) c.textContent = String(seen.size);
+    });
+  </script>
   <script type="module">
     // Its own module on purpose: importing this alongside the flasher meant a failed
     // send.js took the banner down with it, which is how a transient 503 during a
@@ -597,6 +655,12 @@ async function send(files) {
   <a href="https://github.com/hackatnight/HAN-CYD-GBC">source on GitHub</a> ·
   flashing by <a href="https://github.com/espressif/esptool-js">esptool-js</a>
 </footer>
+  </div>
+  <div class="statusbar">
+    <span>- ready -</span>
+    <span>firmware <span id="verFoot">-</span> &nbsp;//&nbsp; <span id="imgCount">-</span> board images</span>
+  </div>
+</div>
 
 <script>
 // ---- board pickers -------------------------------------------------------
