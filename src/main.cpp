@@ -289,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.31.0"
+#define APP_VERSION "2.31.1"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -652,6 +652,8 @@ static void saveSettings() {
 // Scaling is remembered separately for portrait and landscape
 static uint8_t &curScale() { return (cfg.rotation & 1) ? cfg.scaleLand : cfg.scale; }
 
+static void applyBacklight(uint8_t v);   // defined below
+
 static void applyDisplaySettings(bool reinit) {
   if (reinit) {
     lcd.selectPanel(cfg.panelType);
@@ -667,7 +669,32 @@ static void applyDisplaySettings(bool reinit) {
   SCR_W = lcd.width();
   SCR_H = lcd.height();
   lcd.invertDisplay(cfg.invert);
-  lcd.setBrightness(cfg.brightness);
+  applyBacklight(cfg.brightness);
+}
+
+// Backlight, with the chopping switched off entirely at full brightness.
+//
+// The backlight is an N-MOSFET across the LED string, so every PWM cycle switches the
+// whole backlight current on and off. That current comes through the board's buck
+// converter, and modulating its load is what the speaker amplifier hears - the amp's
+// shutdown pin is tied to ground on these boards, so it is always on and always
+// amplifying whatever lands on the 3.3 V rail.
+//
+// Raising the PWM to 40 kHz in 2.31.0 moved that modulation above hearing. But at full
+// brightness LovyanGFX still asks for duty 510 of 512, not 512, so the current is still
+// being chopped - a narrow off-pulse, 40,000 times a second, for no light gained. At
+// maximum the pin is driven high as a plain output instead and the switching stops
+// altogether; any lower setting needs PWM and gets it back.
+static void applyBacklight(uint8_t v) {
+  static bool pwmOn = true;
+  if (v >= 255) {
+    if (pwmOn) { ledcDetachPin(PIN_LCD_BL); pwmOn = false; }
+    pinMode(PIN_LCD_BL, OUTPUT);
+    digitalWrite(PIN_LCD_BL, HIGH);
+    return;
+  }
+  if (!pwmOn) { ledcAttachPin(PIN_LCD_BL, 7); pwmOn = true; }   // channel 7, as configured
+  lcd.setBrightness(v);
 }
 
 // DMG palettes, 0xBBGGRR
