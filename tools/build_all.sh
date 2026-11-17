@@ -12,8 +12,12 @@
 #   ACLI=/path/to/arduino-cli ESPTOOL=/path/to/esptool.py tools/build_all.sh
 # EXTRA_PROPS is passed to every compile, for anything your machine needs on top.
 #
-# With no arguments it builds everything. Give it keys to build only those:
-#   tools/build_all.sh BT touch
+# With no arguments it builds the boards someone is actually using - the ones below in
+# ACTIVE. Every other image stays as it was: rebuilding a board nobody has in their
+# hands only churns binaries nobody can test.
+#   tools/build_all.sh              the active boards
+#   tools/build_all.sh all          every board, for a release that changes all of them
+#   tools/build_all.sh BT touch     just these
 set -e
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -27,6 +31,10 @@ BT_MAX=1179648      # app0 in partitions.csv:       0x120000
 TOUCH_MAX=720896    # app0 in partitions_touch.csv: 0x0B0000
 
 # key                  board flag      ("-" for the plain Bluetooth build)
+# Boards in hand or waiting on a test result. Add a key here when a board arrives,
+# and take it out again when nobody is testing it any more.
+ACTIVE="BT touch CrowPanel-2.4-2.8"
+
 BUILDS="
 BT                     -
 2432S024N              BOARD_024N
@@ -50,7 +58,15 @@ merge() {   # merge <key> <output dir>
     0x1000 "$2/gbc_cyd.ino.bootloader.bin" 0x8000 "$2/gbc_cyd.ino.partitions.bin" 0x10000 "$2/gbc_cyd.ino.bin" > /dev/null
 }
 
-wanted() { [ $# -eq 0 ] && return 0; for w in "$@"; do [ "$w" = "$KEY" ] && return 0; done; return 1; }
+wanted() {
+  if [ $# -eq 0 ]; then
+    for w in $ACTIVE; do [ "$w" = "$KEY" ] && return 0; done
+    return 1
+  fi
+  [ "$1" = "all" ] && return 0
+  for w in "$@"; do [ "$w" = "$KEY" ] && return 0; done
+  return 1
+}
 
 mkdir -p "$WORK"
 echo "$BUILDS" | while read -r KEY FLAG; do

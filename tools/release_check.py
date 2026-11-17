@@ -3,9 +3,14 @@ firmware image is out of step with src/main.cpp.
 
     python3 tools/release_check.py
 
-Checks: the version in the flasher page's header, every manifest's version and image file,
-that each image contains this version (and no older 2.x.y of ours), that each board on the
-page has a manifest, and that the demo zip holds the same ROMs as docs/demos.
+Checks: the flasher page's header matches src/main.cpp; every board someone is actually
+testing is built from that version; every other board's manifest agrees with the image it
+points at, whatever version that is; every board on the page has a manifest and every
+manifest can be reached from the page; and the demo zip holds the same ROMs as docs/demos.
+
+Only the boards in ACTIVE (tools/build_all.sh) have to be current. The rest are built when
+somebody has one in their hands, so they sit at whatever version they were last built
+from - that is expected, and reported rather than failed.
 """
 import glob, json, os, re, sys, zipfile
 
@@ -29,23 +34,30 @@ for x in sorted(used - have):
 for x in sorted(have - used):
     bad.append('%s cannot be reached from the page' % x)
 
+active = set(re.search(r'^ACTIVE="([^"]*)"', open('tools/build_all.sh').read(), re.M).group(1).split())
+
 images = set()
+behind = []
 for p in sorted(glob.glob('docs/firmware/manifest-*.json')):
+    key = re.match(r'manifest-(.*)\.json', os.path.basename(p)).group(1)
     j = json.load(open(p))
-    if j['version'] != ver:
-        bad.append('%s says %s' % (p, j['version']))
+    want = j['version']
+    if key in active and want != ver:
+        bad.append('%s is being tested but its manifest says %s, not %s' % (key, want, ver))
+    elif want != ver:
+        behind.append('%s is on %s' % (key, want))
     for b in j['builds']:
         for part in b['parts']:
             f = os.path.join('docs/firmware', part['path'])
             images.add(f)
             if not os.path.exists(f):
                 bad.append('%s points at missing %s' % (p, f))
+            elif want.encode() not in open(f, 'rb').read():
+                # the image must be the one its own manifest promises, current or not
+                bad.append('%s was not built from %s, which %s offers' % (f, want, os.path.basename(p)))
 for f in sorted(glob.glob('docs/firmware/*.bin')):
     if f not in images:
         bad.append('%s is not used by any manifest' % f)
-    d = open(f, 'rb').read()
-    if ver.encode() not in d:
-        bad.append('%s was not built from version %s' % (f, ver))
 
 z = zipfile.ZipFile('docs/demos/HAN-DEMO-ROMS.zip')
 for n in ('HAN-DEMO.gb', 'HAN-DEMO.gbc', 'HAN-DEMO.nes'):
@@ -58,3 +70,5 @@ if bad:
         print('  - ' + b)
     sys.exit(1)
 print('Release check OK: %s, %d images, %d manifests' % (ver, len(images), len(have)))
+if behind:
+    print('  not rebuilt (nobody is testing them): ' + ', '.join(behind))
