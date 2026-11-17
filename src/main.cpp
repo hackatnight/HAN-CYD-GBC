@@ -262,7 +262,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.19.18"
+#define APP_VERSION "2.19.19"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -3101,6 +3101,24 @@ static void xptCsSweep(char *out, size_t n) {
     snprintf(out, n, "no cs answers (tried %d)", (int)(sizeof CS_TRY / sizeof *CS_TRY));
 }
 
+// Is anything actually wired to this pin?
+//
+// Pull it up, read it, pull it down, read it. A pin with nothing attached follows
+// whichever way it is pulled; a pin wired to something that is driving it does not.
+// That says whether the touch chip's output reaches GPIO12 at all - which eight dead
+// chip selects cannot. Input-only pins (34-39) have no internal pulls on an ESP32, so
+// they can only be reported as they read.
+static const char *pinHeld(int pin) {
+  if (pin >= 34) return digitalRead(pin) ? "high (no pull available)" : "low (no pull available)";
+  pinMode(pin, INPUT_PULLUP);   delayMicroseconds(400); int up = digitalRead(pin);
+  pinMode(pin, INPUT_PULLDOWN); delayMicroseconds(400); int dn = digitalRead(pin);
+  pinMode(pin, INPUT);
+  if (up && !dn) return "floating - nothing attached";
+  if (up && dn)  return "held HIGH by something";
+  if (!up && !dn) return "held LOW by something";
+  return "inverted - odd";
+}
+
 // The same findings on the serial log, where they can be copied instead of
 // photographed. One line per candidate, with the interrupt state alongside, so a
 // report says what the chip did rather than what the screen managed to show.
@@ -3121,6 +3139,15 @@ static void xptReportSerial() {
   digitalWrite(PIN_TP_CS, HIGH);
   for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
     Serial.printf("  pin %d = %d\n", WATCH[k], digitalRead(WATCH[k]));
+
+  // The data line last, because testing it borrows the pin from the screen's bus. Only
+  // GPIO12 is touched, and only as an input - the screen writes on 13/14/15/2 and never
+  // reads, so its picture does not depend on this one. The library puts it back after.
+  Serial.printf("  data line GPIO%d: %s\n", PIN_LCD_MISO, pinHeld(PIN_LCD_MISO));
+  for (unsigned k = 0; k < sizeof WATCH / sizeof *WATCH; k++)
+    Serial.printf("  spare GPIO%d: %s\n", WATCH[k], pinHeld(WATCH[k]));
+  lgfx::spi::init(HSPI_HOST, PIN_LCD_SCLK, PIN_LCD_MISO, PIN_LCD_MOSI);
+  Serial.println("  (data line handed back to the screen bus)");
 }
 
 static void xptRawDump(char *out, size_t n) {
