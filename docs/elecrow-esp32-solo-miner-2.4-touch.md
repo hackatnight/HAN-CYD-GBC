@@ -29,6 +29,26 @@ GPIO_D, I2C, UART0, UART1, SPK, BAT and TF.
 Elecrow document two V1.0 variants — plain, and one described as *"a green circular sticker on the back"* —
 and give each its own example downloads. The board above has **no** green sticker.
 
+## Connectors and pins
+
+<p align="center"><img src="images/elecrow-solo-miner-2.4-connectors.svg" width="660" alt="Board layout showing BOOT, RESET, UART1, I2C, GPIO_D, UART0, BAT, SPK and microSD connectors with their GPIO numbers, plus the display and touch pins"></p>
+
+| Connector | Pins | Notes |
+|---|---|---|
+| `UART0` | USB-C | Power, flashing and the serial log |
+| `UART1` | RX `16`, TX `17` | HY2.0-4P |
+| `I2C` | SDA `22`, SCL `21` | HY2.0-4P |
+| `GPIO_D` | `25`, `32` | HY2.0-4P, digital or analog |
+| `SPK` | `26` | PH2.0-2P, internal DAC channel 2 through a power amp |
+| `TF` (microSD) | CLK `18`, MISO `19`, MOSI `23`, CS `5` | Its own SPI bus, separate from the display |
+| `BAT` | PH2.0-2P | 3.7-4.2 V lithium, with charging |
+| `BOOT` / `RESET` | GPIO`0` / EN | Hold BOOT and tap RESET to force the bootloader |
+| Display | CLK `14`, MOSI `13`, CS `15`, DC `2`, backlight `27` | ILI9341V; the connector has **no SDO pin** |
+| Touch | CLK `14`, DIN `13`, **DOUT `4`**, CS `33`, PENIRQ `36` | XPT2046, sharing the display's clock and data-in |
+
+GPIO`12` is not connected to anything on this board. Elecrow's own annotated photograph of
+the connectors is on [their wiki page](https://www.elecrow.com/pub/wiki/2-PACK-2.4inch-ESP32-Solo-Miner-LCD-Display-Cryptocurrency-Solo-Miner.html).
+
 ## The fix
 
 ```

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 430" width="760" height="430" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <rect width="760" height="430" fill="#ffffff"/>
+  <text x="380" y="26" text-anchor="middle" font-size="16" font-weight="700" fill="#111">Elecrow ESP32 Solo Miner LCD 2.4" (SKU DHM04624D) — connectors and GPIOs</text>
+  <text x="380" y="46" text-anchor="middle" font-size="12" fill="#666">Back of the board, screen facing away. Pin numbers from Eagle_SCH&amp;PCB/1.0</text>
+
+  <rect x="150" y="70" width="460" height="290" rx="10" fill="#f5a623" fill-opacity="0.13" stroke="#c8861a" stroke-width="2"/>
+  <text x="380" y="214" text-anchor="middle" font-size="13" fill="#8a6412">CrowPanel ESP32 Miner LCD — 2.4 inch · V1.0</text>
+
+  <rect x="455" y="96" width="120" height="86" rx="4" fill="#d9d9d9" stroke="#7a7a7a" stroke-width="1.5"/>
+  <text x="515" y="134" text-anchor="middle" font-size="11.5" font-weight="700" fill="#333">ESP32-WROOM</text>
+  <text x="515" y="150" text-anchor="middle" font-size="10.5" fill="#555">32E N4 (U24)</text>
+
+  <rect x="300" y="250" width="92" height="86" rx="4" fill="#e8e8e8" stroke="#7a7a7a" stroke-width="1.5"/>
+  <text x="346" y="298" text-anchor="middle" font-size="11" fill="#444">microSD</text>
+
+  <g font-size="11">
+    <rect x="186" y="78" width="38" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="205" y="90" text-anchor="middle" fill="#333">BOOT</text>
+    <rect x="232" y="78" width="46" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="255" y="90" text-anchor="middle" fill="#333">RESET</text>
+    <rect x="292" y="78" width="54" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="319" y="90" text-anchor="middle" fill="#333">UART1</text>
+    <rect x="360" y="78" width="40" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="380" y="90" text-anchor="middle" fill="#333">I2C</text>
+    <rect x="412" y="78" width="56" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="440" y="90" text-anchor="middle" fill="#333">GPIO_D</text>
+    <rect x="156" y="150" width="50" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="181" y="162" text-anchor="middle" fill="#333">UART0</text>
+    <rect x="156" y="250" width="40" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="176" y="262" text-anchor="middle" fill="#333">BAT</text>
+    <rect x="410" y="310" width="40" height="16" rx="3" fill="#fff" stroke="#c8861a"/><text x="430" y="322" text-anchor="middle" fill="#333">SPK</text>
+  </g>
+
+  <g font-size="11.5" fill="#111">
+    <text x="20" y="92">UART1</text><text x="20" y="108" font-size="11" fill="#1a7f37">RX 16 · TX 17</text>
+    <text x="20" y="132">I2C</text><text x="20" y="148" font-size="11" fill="#1a7f37">SDA 22 · SCL 21</text>
+    <text x="20" y="172">GPIO_D</text><text x="20" y="188" font-size="11" fill="#1a7f37">25 · 32</text>
+    <text x="20" y="212">SPK</text><text x="20" y="228" font-size="11" fill="#1a7f37">26 (DAC2)</text>
+    <text x="20" y="252">microSD</text><text x="20" y="268" font-size="11" fill="#1a7f37">CLK 18 · MISO 19</text><text x="20" y="283" font-size="11" fill="#1a7f37">MOSI 23 · CS 5</text>
+    <text x="20" y="312">UART0</text><text x="20" y="328" font-size="11" fill="#1a7f37">USB-C, flashing</text>
+    <text x="20" y="352">BOOT</text><text x="20" y="368" font-size="11" fill="#1a7f37">GPIO0</text>
+  </g>
+
+  <g font-size="11.5" fill="#111">
+    <text x="634" y="92">Display (ILI9341V)</text>
+    <text x="634" y="108" font-size="11" fill="#1a7f37">CLK 14 · MOSI 13</text>
+    <text x="634" y="123" font-size="11" fill="#1a7f37">CS 15 · DC 2 · BL 27</text>
+    <text x="634" y="139" font-size="11" fill="#a32020">no SDO pin</text>
+    <text x="634" y="172">Touch (XPT2046)</text>
+    <text x="634" y="188" font-size="11" fill="#1a7f37">CLK 14 · DIN 13</text>
+    <text x="634" y="203" font-size="11" font-weight="700" fill="#1a7f37">DOUT 4</text>
+    <text x="634" y="219" font-size="11" fill="#1a7f37">CS 33 · PENIRQ 36</text>
+    <text x="634" y="248" font-size="11" fill="#a32020">GPIO12 unconnected</text>
+  </g>
+</svg>
