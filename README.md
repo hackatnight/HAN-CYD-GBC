@@ -42,32 +42,35 @@ and a one-click web flasher.
 
 ## Supported boards
 
-| Board | Hardware | Display | Touch | PS4 controller | Other controllers | Sound | SD card | USB transfer | Landscape | Fills screen | Tested on hardware |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **ESP32-2432S024C** · Bluetooth | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **ESP32-2432S024C** · touch only | 2.4" ILI9341, CST820 capacitive | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| **ESP32-2432S024R** | 2.4" ILI9341, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028R** | 2.8" ILI9341, XPT2046 resistive, one USB port | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually), XPT2046 resistive, two USB ports | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion), XPT2046 resistive, USB-C, ESP32-WROOM-32E | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S028C** | 2.8" ILI9341, CST820 or GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S032R** | 3.2" ST7789 IPS, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S032C** | 3.2" ST7789 IPS, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-3248S035R** | 3.5" ST7796 320×480, XPT2046 resistive (on the screen's bus) | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
-| **ESP32-3248S035C** | 3.5" ST7796 320×480, GT911 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
-| **JC2432W328C** | 2.8" ST7789 IPS, CST820 capacitive | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S024N** | 2.4" ILI9341, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **ESP32-2432S032N** | 3.2" ST7789 IPS, **no touch** (controller only) | 🟡 | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | ❌ |
-| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br>incl. the 2.4" **Solo Miner** (SKU DHM04624D) | ILI9341V, XPT2046 resistive (on the screen's bus), no RGB LED | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | ✅ | ✅ |
+| Board | Screen and touch | Status |
+|---|---|---|
+| **ESP32-2432S024C** | 2.4" ILI9341 · CST820 capacitive | ✅ **Tested** |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V · XPT2046 resistive (shared bus) · no RGB LED | ✅ **Tested** ‡ |
+| **ESP32-2432S024R** | 2.4" ILI9341 · XPT2046 resistive (shared bus) | 🟡 Untested |
+| **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
+| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
+| **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) · XPT2046 resistive · USB-C | 🟡 Untested |
+| **ESP32-2432S028C** | 2.8" ILI9341 · CST820 or GT911 capacitive | 🟡 Untested |
+| **ESP32-2432S032R** | 3.2" ST7789 IPS · XPT2046 resistive (shared bus) | 🟡 Untested |
+| **ESP32-2432S032C** | 3.2" ST7789 IPS · GT911 capacitive | 🟡 Untested |
+| **JC2432W328C** | 2.8" ST7789 IPS · CST820 capacitive (Guition) | 🟡 Untested |
+| **ESP32-3248S035R** | 3.5" ST7796 320×480 · XPT2046 resistive (shared bus) | 🟡 Untested · letterboxed † |
+| **ESP32-3248S035C** | 3.5" ST7796 320×480 · GT911 capacitive | 🟡 Untested · letterboxed † |
+| **ESP32-2432S024N** | 2.4" ILI9341 · **no touch** (controller only) | 🟡 Untested |
+| **ESP32-2432S032N** | 3.2" ST7789 IPS · **no touch** (controller only) | 🟡 Untested |
 
-✅ works, tested on a real board · 🟡 built in, not tested on hardware yet · ❌ doesn't work / not supported
+✅ **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
+board. 🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
 
-- **Landscape** needs a controller, so the touch-only build stays in portrait.
-- **Other controllers:** new in 2.15.0, on every Bluetooth build: PS5 DualSense, Switch Pro and Joy-Con, Xbox Wireless
-  (Bluetooth models), 8BitDo, Stadia and most Android-style pads, including the ones that use Bluetooth Low Energy.
-  Only the PS4 controller has been tried on a real board so far.
-- **Fills screen:** the 3.5" boards have a 320×480 screen. For now they show the same 240×320 picture in the
-  middle, with a black border. A full-screen layout for them is planned once someone confirms the board works.
+‡ Everything except USB game transfer and landscape, which nobody has tried on this board yet.
+† The 3.5" boards have a 320×480 screen and currently show the same 240×320 picture centred, with a black
+border. A full-screen layout is planned once someone confirms the board works.
+
+- **Two builds per board:** a Bluetooth one, and for the 2.4" C a touch-only one that drops the controller
+  (and so stays in portrait, since landscape needs one).
+- **Other controllers:** new in 2.15.0, on every Bluetooth build: PS5 DualSense, Switch Pro and Joy-Con, Xbox
+  Wireless (Bluetooth models), 8BitDo, Stadia and most Android-style pads, including Bluetooth Low Energy ones.
+  PS4 and Stadia have been tried on real boards.
 - Tried a board? **[Send a board test report](https://github.com/hackatnight/HAN-CYD-GBC/issues/new?template=board-test.md)**
   and the table gets updated.
 
