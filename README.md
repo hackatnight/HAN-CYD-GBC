@@ -45,7 +45,7 @@ and a one-click web flasher.
 | Board | Screen and touch | Status |
 |---|---|---|
 | **ESP32-2432S024C** | 2.4" ILI9341 · CST820 capacitive | ✅ **Tested** |
-| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V · XPT2046 resistive (shared bus) · no RGB LED | ✅ **Tested** ‡ |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V · XPT2046 resistive (shared bus) · no RGB LED | ✅ **Tested** |
 | **ESP32-2432S024R** | 2.4" ILI9341 · XPT2046 resistive (shared bus) | 🟡 Untested |
 | **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
 | **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
@@ -62,7 +62,6 @@ and a one-click web flasher.
 ✅ **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
 board. 🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
 
-‡ Everything except sending games over USB, which currently crashes and reboots this board - being looked into.
 † The 3.5" boards have a 320×480 screen and currently show the same 240×320 picture centred, with a black
 border. A full-screen layout is planned once someone confirms the board works.
 
@@ -541,7 +540,7 @@ and Pro Action Replay codes work.
 | LED | The board's RGB LED (see below) |
 | Display & touch | Orientation, touch calibration and test, flip/mirror fixes, invert colors, swap red/blue |
 | Transfer games (USB) | Opens the USB transfer screen (see [Sending games over USB](#sending-games-over-usb)) |
-| Free memory | Free RAM while browsing (games get more, because the list is freed while playing) |
+| System info | What this board is and how this build drives it: firmware and build, board name, chip, CPU, flash, free RAM, MAC, screen size and bus pins, DMA, backlight, touch chip with its data, CS and interrupt pins and clock, SD pins and card size, speaker, LED and Bluetooth. The same list is printed to the USB serial port when the screen opens, so it can be pasted into a bug report. Handy when a board misbehaves and you need to look up its schematic |
 | Controller (Bluetooth build) | Bluetooth on/off, pair, button layout, on-screen buttons (Auto / Always / Never), forget controllers |
 
 **Settings are saved on the board** the moment you change them, and they're still there after turning it off and on.

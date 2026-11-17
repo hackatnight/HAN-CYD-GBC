@@ -288,7 +288,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.20.0"
+#define APP_VERSION "2.21.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -4001,6 +4001,93 @@ static void ledMenu() {
   }
 }
 
+// ----------------------------------------------------------------------------
+// System info: what this board is, and how this build has it wired.
+//
+// A board that can describe itself saves a great deal of guesswork. The touch chip on
+// the Elecrow Solo Miner answers on GPIO4 where every other board of its family uses
+// GPIO12, and establishing that took a schematic and a disassembly of the stock
+// firmware; a screen stating which pins this build actually drives would have cut that
+// to a glance. The same lines go to the USB serial port, so they can be pasted into a
+// bug report without copying them off a photograph of the screen.
+// ----------------------------------------------------------------------------
+static void sysInfoCollect(std::vector<MenuItem> &it) {
+  auto add = [&](const char *k, String v) { it.push_back({ k, v }); };
+  char mac[20];
+  uint64_t m = ESP.getEfuseMac();
+  snprintf(mac, sizeof mac, "%02X:%02X:%02X:%02X:%02X:%02X", (uint8_t)m, (uint8_t)(m >> 8),
+           (uint8_t)(m >> 16), (uint8_t)(m >> 24), (uint8_t)(m >> 32), (uint8_t)(m >> 40));
+
+  add("Firmware", String(APP_VERSION) + (HAVE_BT ? " BT" : " touch"));
+  add("Board", BOARD_NAME);
+  add("Chip", String(ESP.getChipModel()) + " rev" + ESP.getChipRevision());
+  add("CPU", String(ESP.getCpuFreqMHz()) + " MHz, " + ESP.getChipCores() + " cores");
+  add("Flash", String((unsigned)(ESP.getFlashChipSize() / (1024 * 1024))) + " MB");
+  add("Free RAM", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB, " +
+                  String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + " largest");
+  add("MAC", mac);
+
+  add("Screen", String(SCR_W) + "x" + SCR_H);
+#if PANEL_CHOICE
+  add("Screen chip", cfg.panelType ? "ST7789" : "ILI9341");
+#endif
+  add("Screen bus", String("CLK") + PIN_LCD_SCLK + " out" + PIN_LCD_MOSI + " in" + PIN_LCD_MISO);
+  add("Screen CS/DC", String("CS") + PIN_LCD_CS + " DC" + PIN_LCD_DC);
+  add("Screen DMA", BUS_DMA_CH ? String("channel ") + BUS_DMA_CH : String("off (shared bus)"));
+  add("Backlight", String("GPIO") + PIN_LCD_BL);
+
+  add("Touch chip", TOUCH_KIND == TOUCH_CST ? "CST820 / GT911 (I2C)"
+                  : TOUCH_KIND == TOUCH_XPT_OWN ? "XPT2046 (own pins)"
+                  : TOUCH_KIND == TOUCH_XPT_BUS ? "XPT2046 (screen bus)"
+                  : TOUCH_KIND == TOUCH_NONE ? "none" : "I2C");
+#if TOUCH_KIND == TOUCH_XPT_BUS
+  // The data pin is the one worth stating plainly: it is the difference between the
+  // CrowPanel (GPIO12) and the Solo Miner (GPIO4), and a wrong one looks like a dead chip.
+  add("Touch data", String("GPIO") + PIN_LCD_MISO + " (shared bus)");
+  add("Touch CS/INT", String("CS") + PIN_TP_CS + " INT" + PIN_TP_INT);
+  add("Touch clock", String(TOUCH_SPI_HZ / 1000) + " kHz");
+#elif TOUCH_KIND == TOUCH_XPT_OWN
+  add("Touch bus", String("CLK") + PIN_TP_SCLK + " out" + PIN_TP_MOSI + " in" + PIN_TP_MISO);
+  add("Touch CS/INT", String("CS") + PIN_TP_CS + " INT" + PIN_TP_INT);
+#elif TOUCH_KIND != TOUCH_NONE
+  add("Touch bus", String("SDA") + PIN_TP_SDA + " SCL" + PIN_TP_SCL + " INT" + PIN_TP_INT);
+#endif
+#if TOUCH_KIND != TOUCH_NONE
+  add("Touch cal", cfg.calValid ? "calibrated" : "default");
+#endif
+
+  add("SD bus", String("CLK") + PIN_SD_SCK + " out" + PIN_SD_MOSI + " in" + PIN_SD_MISO + " CS" + PIN_SD_CS);
+  add("SD card", sdOk ? String((unsigned)(SD.cardSize() / (1024ULL * 1024 * 1024))) + " GB" : String("not mounted"));
+  add("Speaker", "GPIO26 (DAC2)");
+  add("RGB LED", HAS_LED ? "yes" : "none");
+  add("Bluetooth", HAVE_BT ? "yes" : "not in this build");
+}
+
+static void sysInfoSerial(const std::vector<MenuItem> &it) {
+  Serial.printf("\n--- %s system info ---\n", APP_NAME);
+  for (const MenuItem &m : it) Serial.printf("  %-14s %s\n", m.label.c_str(), m.value.c_str());
+  Serial.println("  Docs           github.com/hackatnight/HAN-CYD-GBC");
+  Serial.println("--- end ---\n");
+}
+
+static void sysInfoScreen() {
+  bool printed = false;
+  static int selInfo = -1;
+  while (true) {
+    std::vector<MenuItem> it;
+    sysInfoCollect(it);
+    if (!printed) { sysInfoSerial(it); printed = true; }   // once, on opening
+    it.push_back({ "Print to USB serial", "again" });
+    int i = runList("System info", "Back", it, &selInfo);
+    if (i < 0) return;
+    if (i == (int)it.size() - 1) {
+      std::vector<MenuItem> fresh;        // without the button itself
+      sysInfoCollect(fresh);
+      sysInfoSerial(fresh);
+    }
+  }
+}
+
 static void settingsMenu() {
   while (true) {
     std::vector<MenuItem> it = {
@@ -4015,8 +4102,7 @@ static void settingsMenu() {
       { "LED", ">" },   // index 8: removed below on boards without an LED
       { "Display & touch", ">" },
       { "Transfer games (USB)", ">" },
-      { "Free memory", String(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024) + " KB (max " +
-                       String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024) + ")" },
+      { "System info", ">" },   // board, chip, pins - and the same list over serial
 #if HAVE_BT
       { "Controller (Bluetooth)", btCount() ? String(btCount()) + " connected" : String(">") },
 #endif
@@ -4043,6 +4129,7 @@ static void settingsMenu() {
       case 8: ledMenu(); break;
       case 9: displayTouchMenu(); break;
       case 10: xferMode(false); break;
+      case 11: sysInfoScreen(); break;
       case 12: controllerMenu(); break;
     }
     applyDisplaySettings(false);
