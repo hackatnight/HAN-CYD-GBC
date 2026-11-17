@@ -21,6 +21,7 @@
 #include <esp_spi_flash.h>
 #include <driver/i2s.h>
 #include <soc/spi_periph.h>   // spi_periph_signal: which signal index is this host's data input
+#include <soc/spi_reg.h>      // SPI_DMA_OUT_LINK_REG: disarm DMA before a FIFO touch read
 #include <esp_rom_gpio.h>     // esp_rom_gpio_connect_in_signal: point that input at a pin
 #include <vector>
 #include <algorithm>
@@ -215,9 +216,9 @@
 #error "Boards with no touch screen need the Bluetooth build"
 #endif
 #define TOUCH_RESISTIVE (TOUCH_KIND == TOUCH_XPT_OWN || TOUCH_KIND == TOUCH_XPT_BUS)
-// The screen's SPI DMA channel, 0 for none. See the bus setup for why a shared touch
-// chip rules it out.
-#define BUS_DMA_CH (TOUCH_KIND == TOUCH_XPT_BUS ? 0 : 1)
+// The screen's SPI DMA channel, 0 for none. Every board gets one, including those whose
+// touch chip shares the bus - see busDmaIdle() for what that costs and how it is paid.
+#define BUS_DMA_CH 1
 // Ask for a touch calibration at the first start (where the touch layer isn't known to
 // line up with the screen out of the box)
 #define TOUCH_ASK_CAL (TOUCH_RESISTIVE || TOUCH_KIND == TOUCH_I2C_ANY || CAL_AT_START)
@@ -288,7 +289,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.21.0"
+#define APP_VERSION "2.22.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -339,18 +340,9 @@ public:
       c.freq_read = 16000000;
       c.spi_3wire = false;
       c.use_lock = true;
-      // DMA off where the touch chip shares this bus.
-      //
-      // With a DMA channel attached, a transfer's data comes from the DMA descriptors,
-      // not from the peripheral's own FIFO registers - and the touch driver talks to the
-      // chip by writing those registers directly. So the command bytes never reach the
-      // chip, it never answers, and every read comes back as zeros no matter which chip
-      // select or data pin is used. That is exactly what this board does. The firmware it
-      // ships with reads the same chip on the same pins through the Arduino SPI library,
-      // which does not use DMA for transfers this small.
-      //
-      // The screen loses DMA on these boards and draws a little slower for it. Boards
-      // whose touch is on its own pins or on I2C keep it.
+      // Every board draws with DMA, shared touch bus or not. Where the touch chip is on
+      // this bus, busDmaIdle() disarms the outgoing DMA link before each touch read so
+      // the chip still gets its command bytes from the FIFO.
       c.dma_channel = BUS_DMA_CH;
       c.pin_sclk = PIN_LCD_SCLK;
       c.pin_mosi = PIN_LCD_MOSI;
@@ -890,6 +882,26 @@ static inline void screenToPanel(float sx, float sy, float &px, float &py) {
   }
 }
 
+// Let the bus take its next command from the FIFO rather than from DMA.
+//
+// Reading the touch chip means writing the SPI peripheral's own FIFO registers by hand.
+// That only works if the outgoing DMA link is not still armed from the last screen
+// push - otherwise the peripheral sends whatever the descriptor points at, the chip
+// never hears the command, and the read comes back as zeros however the pins are wired.
+//
+// LovyanGFX does disarm it, but only on the ESP32-S3 and friends: on the original ESP32
+// that code is compiled out, and the link stays armed between transfers. So disarm it
+// here, which costs two register writes. Nothing is lost by it - Bus_SPI writes the link
+// afresh on every DMA transfer - so the screen keeps its DMA and the touch chip keeps
+// its FIFO. This is what let the screen's DMA come back in 2.22.0.
+static inline void busDmaIdle(void) {
+#if TOUCH_KIND == TOUCH_XPT_BUS
+  const uint32_t port = HSPI_HOST + 1;
+  WRITE_PERI_REG(SPI_DMA_OUT_LINK_REG(port), 0);
+  WRITE_PERI_REG(SPI_DMA_CONF_REG(port), 0);
+#endif
+}
+
 static bool readTouchRaw(int &rx, int &ry) {
 #if TOUCH_KIND == TOUCH_NONE
   (void)rx; (void)ry;
@@ -899,6 +911,7 @@ static bool readTouchRaw(int &rx, int &ry) {
 #if TOUCH_KIND == TOUCH_XPT_BUS
   // the touch chip shares the screen's bus: wait until the other core isn't drawing
   if (lcdMutex) xSemaphoreTake(lcdMutex, portMAX_DELAY);
+  busDmaIdle();
   bool got = lcd.getTouchRaw(&tp, 1);
   if (lcdMutex) xSemaphoreGive(lcdMutex);
   if (!got) return false;
@@ -3103,6 +3116,7 @@ static bool xptReadWith(int cs, uint8_t *d) {
   memset(d, 0, 8);
   d[0] = 0x91; d[2] = 0xB1; d[4] = 0xD1; d[6] = 0xC1; d[56] = 0x80;
   memcpy(&d[8], d, 8); memcpy(&d[16], d, 16); memcpy(&d[32], d, 24);
+  busDmaIdle();
   lgfx::spi::beginTransaction(HSPI_HOST, TOUCH_SPI_HZ, 0);
   digitalWrite(cs, LOW);
   lgfx::spi::readBytes(HSPI_HOST, d, 57);

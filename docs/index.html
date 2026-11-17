@@ -109,7 +109,7 @@
 <body>
 <header>
   <h1>H@N-CYD-GBC</h1>
-  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.21.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
+  <p>Game Boy, Game Boy Color and NES on the ESP32 "Cheap Yellow Display". Version 2.22.0. <a href="#send" style="color:#c8d6e2">Send games over USB ↓</a></p>
 </header>
 <main>
   <img class="hero" src="images/boot.gif" alt="The wireframe H@N boot screen">
@@ -336,8 +336,8 @@ $('connect').onclick = async () => {
     try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (e) {}
     link = new HnxLink(port.readable, port.writable);
     // Show whatever the board prints in the serial monitor, even though the transfer
-    // owns the port: if it resets mid-transfer, its panic and backtrace land there
-    // instead of being thrown away.
+    // owns the port, so a transfer that goes wrong leaves the board's own account of it
+    // on screen instead of nothing.
     link.onNoise = l => { if (window.hanSerial) window.hanSerial.log(l + '\n'); };
     status('Connecting... (if the board restarts, this takes a few seconds)');
     const info = await link.hello();

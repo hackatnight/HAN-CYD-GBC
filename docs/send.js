@@ -49,10 +49,10 @@ export class HnxLink {
     this.lines = [];
     this.waiters = [];
     this.closed = false;
-    // Anything the board prints that is not part of the protocol - the boot log, and
-    // the panic and backtrace it prints if it crashes. This used to be dropped on the
-    // floor, which meant a board that reset mid-transfer looked like a silent timeout
-    // with nothing to go on. Kept here, and handed to onNoise as it arrives.
+    // Anything the board prints that is not part of the protocol: its boot log, and
+    // whatever it says if something goes wrong. This used to be dropped on the floor,
+    // which left a failed transfer with nothing to go on. Kept here, and handed to
+    // onNoise as it arrives.
     this.noise = [];
     this.onNoise = null;
     this._pump();
@@ -71,7 +71,7 @@ export class HnxLink {
           const line = buf.slice(0, i).replace(/\r$/, '');
           buf = buf.slice(i + 1);
           if (line.startsWith('HNX ')) this._push(line.slice(4));
-          else if (line.trim()) this._noise(line);   // boot log, or a crash
+          else if (line.trim()) this._noise(line);   // the board's own output
         }
         if (buf.length > 8192) buf = '';
       }
