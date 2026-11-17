@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>H@N-CYD-GBC web flasher: Game Boy, GBC and NES for CYD boards ESP32-2432S024, ESP32-2432S028, CYD2USB, JC2432W328, ESP32-2432S032, ESP32-3248S035 and Elecrow CrowPanel 2.4/2.8</title>
 <meta name="description" content="Flash the H@N-CYD-GBC Game Boy, Game Boy Color and NES emulator to a Cheap Yellow Display (CYD) from your browser: ESP32-2432S024C/R, ESP32-2432S028R/C, CYD2USB, ESP32-2432S032C/R/N, ESP32-3248S035C/R, JC2432W328C, ESP32-2432S024N and the Elecrow CrowPanel ESP32 2.4" / 2.8".">
-<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 <style>
   :root {
     --bg: #0e1622; --panel: #1d2a38; --hilite: #34495e; --accent: #86a8c4;
@@ -25,11 +24,11 @@
   .card { background: var(--panel); border: 1px solid var(--hilite); border-radius: 12px; padding: 18px 20px; }
   .card h2 { margin: 0 0 6px; font-size: 20px; }
   .card ul { padding-left: 20px; color: var(--dim); margin: 8px 0 16px; }
-  esp-web-install-button button, .btn {
+  .btn {
     background: var(--hilite); color: var(--text); border: 1px solid var(--accent); border-radius: 8px;
     padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
   }
-  esp-web-install-button button:hover, .btn:hover { background: #3f5770; }
+  .btn:hover { background: #3f5770; }
   .btn:disabled { opacity: .45; cursor: default; }
   .btn:disabled:hover { background: var(--hilite); }
   .unsupported { color: var(--warn); }
@@ -82,6 +81,8 @@
   .btn.ghost { background: transparent; }
   .btn.ghost:hover { background: var(--hilite); }
   .pickfoot { grid-column: 1 / -1; color: var(--dim); margin: 0; font-size: 14px; }
+  .erase { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .erase input { width: 16px; height: 16px; }
   .boards details { margin-top: 2px; }
   .boards summary { color: var(--dim); font-size: 13px; cursor: pointer; font-weight: normal; }
   .boards details ul { margin: 6px 0 2px; padding-left: 18px; color: var(--dim); font-size: 13px; font-weight: normal; }
@@ -125,11 +126,7 @@
           <option value="firmware/manifest-BT.json">ESP32-2432S024C (2.4&quot;) - Bluetooth</option>
           <option value="firmware/manifest-touch.json">ESP32-2432S024C (2.4&quot;) - Touch only</option>
         </select>
-        <esp-web-install-button id="fl-tested" manifest="firmware/manifest-BT.json">
-          <button slot="activate" class="btn small">Flash now</button>
-          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
-          <span slot="not-allowed" class="unsupported">Needs https.</span>
-        </esp-web-install-button>
+        <button class="btn small" id="fl-tested">Flash now</button>
         <button class="btn small ghost" id="dl-tested">Download .bin</button>
       </div>
     </div>
@@ -139,11 +136,7 @@
         <select id="sel-testing" aria-label="Testing now board">
           <option value="firmware/manifest-CrowPanel-2.4-2.8.json">Elecrow CrowPanel ESP32 HMI 2.4&quot; or 2.8&quot; - CrowPanel 2.4&quot; / 2.8&quot;</option>
         </select>
-        <esp-web-install-button id="fl-testing" manifest="firmware/manifest-CrowPanel-2.4-2.8.json">
-          <button slot="activate" class="btn small">Flash now</button>
-          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
-          <span slot="not-allowed" class="unsupported">Needs https.</span>
-        </esp-web-install-button>
+        <button class="btn small" id="fl-testing">Flash now</button>
         <button class="btn small ghost" id="dl-testing">Download .bin</button>
       </div>
     </div>
@@ -164,14 +157,12 @@
           <option value="firmware/manifest-2432S024N.json">ESP32-2432S024N (2.4&quot; - 2.4&quot; no touch</option>
           <option value="firmware/manifest-2432S032N.json">ESP32-2432S032N (3.2&quot; - 3.2&quot; no touch</option>
         </select>
-        <esp-web-install-button id="fl-untested" manifest="firmware/manifest-2432S024R.json">
-          <button slot="activate" class="btn small">Flash now</button>
-          <span slot="unsupported" class="unsupported">Use Chrome or Edge on a computer.</span>
-          <span slot="not-allowed" class="unsupported">Needs https.</span>
-        </esp-web-install-button>
+        <button class="btn small" id="fl-untested">Flash now</button>
         <button class="btn small ghost" id="dl-untested">Download .bin</button>
       </div>
     </div>
+    <label class="pickfoot erase"><input type="checkbox" id="eraseFirst"> Erase the whole flash first
+      <span class="picknote">(wipes saved games and settings; leave off for an update)</span></label>
     <p class="pickfoot">Pick your board, then <strong>Flash now</strong>. What each board does and doesn't support is in
       <a href="#boards">Supported boards</a> below, with the per-board notes.</p>
   </div>
@@ -449,7 +440,7 @@ async function send(files) {
 <footer>
   H@N-CYD-GBC by <a href="https://hackatnight.com">hackatnight.com</a> ·
   <a href="https://github.com/hackatnight/HAN-CYD-GBC">source on GitHub</a> ·
-  flashing by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+  flashing by <a href="https://github.com/espressif/esptool-js">esptool-js</a>
 </footer>
 
 <script>
@@ -543,21 +534,24 @@ for (const id of ['tested', 'testing', 'untested']) {
     bConnect.disabled = false; bDisconnect.disabled = true;
     setState('not connected');
   }
-  window.hanSerialRelease = disconnect;
 
-  bConnect.addEventListener('click', async () => {
+  // Opening a port and choosing one are separate on purpose: after a flash the page
+  // already holds a port, and asking for one again from a timer would be refused -
+  // browsers only allow the picker during a click.
+  async function attach(p, baud) {
+    port = p;
     try {
-      port = await navigator.serial.requestPort();
-      await port.open({ baudRate: Number(baudEl.value) });
+      await port.open({ baudRate: Number(baud) });
     } catch (e) {
-      if (e && e.name === 'NotFoundError') { setState('no port chosen'); return; }
-      setState('could not open: ' + (e && e.message ? e.message : e), 'err');
-      port = null;
-      return;
+      if (!(e && String(e).includes('already open'))) {
+        setState('could not open: ' + (e && e.message ? e.message : e), 'err');
+        port = null;
+        return;
+      }
     }
     bConnect.disabled = true; bDisconnect.disabled = false;
-    setState('connected at ' + baudEl.value, 'on');
-    write('\n--- connected at ' + baudEl.value + ' ---\n');
+    setState('connected at ' + baud, 'on');
+    write('\n--- connected at ' + baud + ' ---\n');
     const decoder = new TextDecoder();
     try {
       reader = port.readable.getReader();
@@ -571,6 +565,13 @@ for (const id of ['tested', 'testing', 'untested']) {
     }
     try { reader && reader.releaseLock(); } catch (e) {}
     if (!closing) await disconnect();
+  }
+
+  bConnect.addEventListener('click', async () => {
+    let chosen;
+    try { chosen = await navigator.serial.requestPort(); }
+    catch (e) { setState('no port chosen'); return; }
+    await attach(chosen, baudEl.value);
   });
 
   bDisconnect.addEventListener('click', disconnect);
@@ -580,11 +581,110 @@ for (const id of ['tested', 'testing', 'untested']) {
     catch (e) { setState('could not copy - select the text instead', 'err'); }
   });
 
-  // hand the port back before any flash begins
-  document.querySelectorAll('esp-web-install-button').forEach((el) => {
-    el.addEventListener('click', () => { if (port) disconnect(); }, true);
-  });
+  // the flasher drives the monitor: it needs the port while it works, and the boot
+  // log straight afterwards is the most useful thing on the screen
+  window.hanSerial = {
+    release: disconnect,
+    isOpen: () => !!port,
+    log: write,
+    state: setState,
+    // the flasher hands over the port it already opened, so no picker is needed
+    attach: (p, baud) => { baudEl.value = String(baud || 921600); return attach(p, baud || 921600); },
+  };
 })();
+</script>
+
+<script type="module">
+// The flashing itself, so the page owns every step of it: no dialogs to click
+// through, an erase that happens only when asked for, and all of it reported in the
+// serial monitor rather than in a box over the top of the page.
+import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.5.6/+esm';
+
+const erase = document.getElementById('eraseFirst');
+const log = (t) => window.hanSerial && window.hanSerial.log(t);
+const say = (t, cls) => window.hanSerial && window.hanSerial.state(t, cls);
+
+let busy = false;
+
+async function flash(sel, btn) {
+  if (busy) return;
+  busy = true;
+  const was = btn.textContent;
+  btn.textContent = 'flashing...';
+  document.querySelectorAll('.pickrow .btn').forEach((b) => (b.disabled = true));
+
+  let transport = null;
+  try {
+    // the monitor has to let go: the chip can only talk to one of us at a time
+    if (window.hanSerial && window.hanSerial.isOpen()) await window.hanSerial.release();
+
+    const man = await (await fetch(sel.value, { cache: 'no-store' })).json();
+    const path = man.builds[0].parts[0].path;
+    log('\n--- ' + man.name + ' ' + man.version + ' ---\n');
+    log('reading ' + path + '\n');
+    const data = new Uint8Array(await (await fetch('firmware/' + path, { cache: 'no-store' })).arrayBuffer());
+    log(data.length.toLocaleString() + ' bytes\n');
+
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    const loader = new ESPLoader({
+      transport, baudrate: 921600, debugLogging: false,
+      terminal: { clean() {}, writeLine: (d) => log(d + '\n'), write: (d) => log(d) },
+    });
+
+    say('connecting', '');
+    const chip = await loader.main();
+    log('\nconnected to ' + chip + '\n');
+
+    if (erase && erase.checked) {
+      say('erasing', '');
+      log('erasing the whole flash, this takes a while...\n');
+      await loader.eraseFlash();
+      log('erased\n');
+    }
+
+    say('writing', '');
+    let last = -1;
+    await loader.writeFlash({
+      fileArray: [{ data, address: 0 }],
+      flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true,
+      reportProgress: (i, written, total) => {
+        const pct = Math.floor((written / total) * 100);
+        if (pct !== last && pct % 5 === 0) { log('  ' + pct + '%\n'); last = pct; }
+      },
+    });
+    log('written, restarting the board\n');
+    await loader.after('hard_reset');
+    say('done', 'on');
+
+    await transport.disconnect();
+    transport = null;
+    // straight back to listening on the same port, so the boot log lands here by itself
+    log('--- flashed, listening for the boot log ---\n');
+    setTimeout(() => window.hanSerial && window.hanSerial.attach(port, 921600), 500);
+  } catch (e) {
+    if (e && e.name === 'NotFoundError') { say('no port chosen'); }
+    else { say('flashing failed', 'err'); log('\n--- ' + (e && e.message ? e.message : e) + ' ---\n'); }
+    try { if (transport) await transport.disconnect(); } catch (x) {}
+  } finally {
+    btn.textContent = was;
+    document.querySelectorAll('.pickrow .btn').forEach((b) => (b.disabled = false));
+    busy = false;
+  }
+}
+
+for (const id of ['tested', 'testing', 'untested']) {
+  const sel = document.getElementById('sel-' + id);
+  const btn = document.getElementById('fl-' + id);
+  if (sel && btn) btn.addEventListener('click', () => flash(sel, btn));
+}
+
+if (!('serial' in navigator)) {
+  document.querySelectorAll('.pickrow .btn').forEach((b) => {
+    if (b.id && b.id.startsWith('fl-')) { b.disabled = true; b.title = 'Needs Chrome or Edge on a computer'; }
+  });
+}
 </script>
 </body>
 </html>
