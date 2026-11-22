@@ -3,7 +3,7 @@
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
 "CYD2USB", the 2.8" JC2432W328C, the 3.2" ESP32-2432S032C and ESP32-2432S032R, the 3.5" ESP32-3248S035C and
-ESP32-3248S035R, the touch-less ESP32-2432S024N and ESP32-2432S032N, the ESP32-2432S028R Plus, and the Elecrow CrowPanel ESP32 2.4" and
+ESP32-3248S035R, the touch-less ESP32-2432S024N and ESP32-2432S032N, the ESP32-2432S028R Plus, the LCDWiki 2.8" ESP32-32E (E32R28T), and the Elecrow CrowPanel ESP32 2.4" and
 2.8" (including the 2.4" "ESP32 Solo Miner LCD", SKU DHM04624D)**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
 and a one-click web flasher.
 
@@ -50,6 +50,7 @@ and a one-click web flasher.
 | **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
 | **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
 | **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) · XPT2046 resistive · USB-C | 🟡 Untested |
+| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ILI9341V · XPT2046 resistive · USB-C | 🟡 Untested |
 | **ESP32-2432S028C** | 2.8" ILI9341 · CST820 or GT911 capacitive | 🟡 Untested |
 | **ESP32-2432S032R** | 3.2" ST7789 IPS · XPT2046 resistive (shared bus) | 🟡 Untested |
 | **ESP32-2432S032C** | 3.2" ST7789 IPS · GT911 capacitive | 🟡 Untested |
@@ -91,6 +92,10 @@ pin (21 on the 2.8" CYDs, 27 on the others), the touch chip and the screen chip.
   an ST7789 screen with no color inversion, the RGB LED on GPIO 17 / 22 / 16 (red / green / blue), and GPIO4 switching
   the speaker amplifier on (the 2.8" R build would flicker that pin as the LED's red channel and cut the sound).
   The build holds GPIO4 high. If the board makes no sound at all, tell us: the amplifier may want it low instead.
+- **E32R28T (LCDWiki 2.8" ESP32-32E, printed "ESP32-32E ZLX"):** USB-C, ESP32-WROOM-32E, CH340C, battery connector.
+  Use its own build. Wired like the 2.8" R (ILI9341, XPT2046 touch on its own pins, SD on 18/19/23/5), except the RGB
+  LED is on GPIO 22 / 16 / 17 (red / green / blue) and GPIO4 enables the speaker amplifier when low. The CN3 header
+  (IO23/19/18, CS IO27) shares the SD card's bus.
 - **Elecrow CrowPanel ESP32 HMI 2.4" and 2.8":** one build for both (the original ESP32-WROOM versions, *not* the
   "Advance" ESP32-S3 ones). They're wired like the 2.4" R (ILI9341, resistive touch on the screen's bus, backlight 27,
   same SD card and speaker pins), with two differences: there's no RGB LED, so the LED settings are left out (its
@@ -264,6 +269,8 @@ esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S024N.bin
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S032N.bin
 # ESP32-2432S028R Plus (USB-C, NerdMiner kits):
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-2432S028R-Plus.bin
+# E32R28T (LCDWiki 2.8" ESP32-32E):
+esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-E32R28T.bin
 # Elecrow CrowPanel ESP32 2.4" / 2.8":
 esptool.py --chip esp32 --baud 921600 write_flash 0x0 HAN-CYD-GBC-CrowPanel-2.4-2.8.bin
 ```
@@ -744,7 +751,7 @@ The [web flasher](https://hackatnight.com/HAN-CYD-GBC/) is all you need to play.
    - For the touch-only build, copy `partitions_touch.csv` over `partitions.csv` first.
 3. Bluetooth support turns on by itself when you build with the Bluepad32 board package.
    - For another board, define one of `BOARD_024R`, `BOARD_028R`, `BOARD_CYD2USB`, `BOARD_028C`, `BOARD_032R`,
-     `BOARD_032C`, `BOARD_035R`, `BOARD_035C`, `BOARD_W328C`, `BOARD_CROW`, `BOARD_028PLUS`, `BOARD_024N` or `BOARD_032N` (the last two need the
+     `BOARD_032C`, `BOARD_035R`, `BOARD_035C`, `BOARD_W328C`, `BOARD_CROW`, `BOARD_028PLUS`, `BOARD_E32R28T`, `BOARD_024N` or `BOARD_032N` (the last two need the
      Bluetooth build). Either
      uncomment the line near the top of `src/main.cpp`, or with arduino-cli add
      `--build-property compiler.cpp.extra_flags=-DBOARD_028R` (for example). Use the Bluetooth partition layout.

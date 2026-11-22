@@ -60,6 +60,9 @@
 //   BOARD_028PLUS 2.8" ESP32-2432S028R Plus (ESP32-WROOM-32E, USB-C, sold in NerdMiner kits):
 //                 as the 2.8" R, but an ST7789 screen without inversion, the RGB LED on
 //                 17 / 22 / 16, and the speaker amplifier switched on by GPIO4
+//   BOARD_E32R28T 2.8" LCDWiki ESP32-32E (E32R28T, ESP32-WROOM-32E, USB-C, "ZLX"): as the
+//                 2.8" R (ILI9341, XPT2046 on its own pins), but the RGB LED on 22 / 16 / 17
+//                 and the speaker amplifier switched on by GPIO4 LOW (lcdwiki.com pin table)
 //   BOARD_CROW    Elecrow CrowPanel ESP32 2.4" / 2.8" (ESP32-WROOM versions), and the same
 //                 board sold as the ESP32 Solo Miner LCD: like the 2.4" R (resistive XPT2046
 //                 on the screen's bus, pen interrupt on GPIO36) but no RGB LED. Its
@@ -82,6 +85,7 @@
 // #define BOARD_032N
 // #define BOARD_CROW
 // #define BOARD_028PLUS
+// #define BOARD_E32R28T
 #define TOUCH_CST     0   // CST820 on I2C (2.4" C)
 #define TOUCH_XPT_OWN 1   // XPT2046 on its own pins, software SPI (2.8" R, CYD2USB)
 #define TOUCH_XPT_BUS 2   // XPT2046 sharing the screen's SPI bus (2.4" R, 3.2" R, 3.5" R)
@@ -161,6 +165,14 @@
 #define BL_PIN 21
 #define LED_PINS 17, 22, 16   // red, green, blue
 #define AUDIO_EN_PIN 4     // speaker amplifier enable (assumed on when high)
+#elif defined(BOARD_E32R28T)
+#define BOARD_NAME "E32R28T"
+#define TOUCH_KIND TOUCH_XPT_OWN   // XPT2046 on 25 / 32 / 39, CS 33, IRQ 36
+#define PANEL_CHOICE 1     // ILI9341V by default; the setting is there if one ships otherwise
+#define BL_PIN 21
+#define LED_PINS 22, 16, 17   // red, green, blue (common anode, lit when low)
+#define AUDIO_EN_PIN 4
+#define AUDIO_EN_LEVEL LOW // this board's amplifier is enabled by a low level
 #elif defined(BOARD_CROW)
 #define BOARD_NAME "CrowPanel-ESP32-2.4-2.8"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -6259,7 +6271,10 @@ void setup() {
   pinMode(PIN_BOOT_BTN, INPUT_PULLUP);
 #ifdef AUDIO_EN_PIN
   pinMode(AUDIO_EN_PIN, OUTPUT);       // switch the speaker amplifier on
-  digitalWrite(AUDIO_EN_PIN, HIGH);
+#ifndef AUDIO_EN_LEVEL
+#define AUDIO_EN_LEVEL HIGH
+#endif
+  digitalWrite(AUDIO_EN_PIN, AUDIO_EN_LEVEL);
 #endif
   lcdMutex = xSemaphoreCreateMutex();
   frameReady = xSemaphoreCreateBinary();

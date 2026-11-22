@@ -44,7 +44,7 @@ TOUCH_MAX=720896    # app0 in partitions_touch.csv: 0x0B0000
 #   CrowPanel-2.4-2.8 - the Elecrow 2.4" Solo Miner (SKU DHM04624D)
 # That is three keys for two boards. Add a key when a board arrives and take it out
 # again when nobody is testing it, so a build never churns images nobody can check.
-ACTIVE="BT touch CrowPanel-2.4-2.8"
+ACTIVE="BT touch CrowPanel-2.4-2.8 E32R28T"
 
 BUILDS="
 BT                     -
@@ -53,6 +53,7 @@ BT                     -
 2432S028C              BOARD_028C
 2432S028R              BOARD_028R
 2432S028R-Plus         BOARD_028PLUS
+E32R28T                BOARD_E32R28T
 2432S028-2USB          BOARD_CYD2USB
 2432S032C              BOARD_032C
 2432S032N              BOARD_032N
