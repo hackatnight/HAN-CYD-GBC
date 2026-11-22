@@ -50,7 +50,7 @@ and a one-click web flasher.
 | **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
 | **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
 | **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) · XPT2046 resistive · USB-C | 🟡 Untested |
-| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ST7789 · XPT2046 resistive · USB-C | 🟡 Untested |
+| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ST7789 · XPT2046 resistive · USB-C | 🧪 **Testing now** |
 | **ESP32-2432S028C** | 2.8" ILI9341 · CST820 or GT911 capacitive | 🟡 Untested |
 | **ESP32-2432S032R** | 3.2" ST7789 IPS · XPT2046 resistive (shared bus) | 🟡 Untested |
 | **ESP32-2432S032C** | 3.2" ST7789 IPS · GT911 capacitive | 🟡 Untested |
@@ -61,7 +61,8 @@ and a one-click web flasher.
 | **ESP32-2432S032N** | 3.2" ST7789 IPS · **no touch** (controller only) | 🟡 Untested |
 
 ✅ **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
-board. 🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
+board. 🧪 **Testing now** - on the bench: display and touch work, the rest is being checked.
+🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
 
 † The 3.5" boards have a 320×480 screen and currently show the same 240×320 picture centred, with a black
 border. A full-screen layout is planned once someone confirms the board works.
