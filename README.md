@@ -44,13 +44,13 @@ and a one-click web flasher.
 
 | Board | Screen and touch | Status |
 |---|---|---|
-| **ESP32-2432S024C** | 2.4" ILI9341 · CST820 capacitive | ✅ **Tested** |
 | **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V · XPT2046 resistive (shared bus) · no RGB LED | ✅ **Tested** |
+| **ESP32-2432S024C** | 2.4" ILI9341 · CST820 capacitive | ✅ **Tested** |
+| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ST7789 · XPT2046 resistive · USB-C | 🧪 **Testing now** |
 | **ESP32-2432S024R** | 2.4" ILI9341 · XPT2046 resistive (shared bus) | 🟡 Untested |
 | **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
 | **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
 | **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) · XPT2046 resistive · USB-C | 🟡 Untested |
-| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ST7789 · XPT2046 resistive · USB-C | 🧪 **Testing now** |
 | **ESP32-2432S028C** | 2.8" ILI9341 · CST820 or GT911 capacitive | 🟡 Untested |
 | **ESP32-2432S032R** | 3.2" ST7789 IPS · XPT2046 resistive (shared bus) | 🟡 Untested |
 | **ESP32-2432S032C** | 3.2" ST7789 IPS · GT911 capacitive | 🟡 Untested |
