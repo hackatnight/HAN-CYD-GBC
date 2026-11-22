@@ -168,7 +168,9 @@
 #elif defined(BOARD_E32R28T)
 #define BOARD_NAME "E32R28T"
 #define TOUCH_KIND TOUCH_XPT_OWN   // XPT2046 on 25 / 32 / 39, CS 33, IRQ 36
-#define PANEL_CHOICE 1     // ILI9341V by default; the setting is there if one ships otherwise
+#define PANEL_CHOICE 1
+#define DEFAULT_PANEL 1    // ST7789: driven as an ILI9341 (as the wiki says) the picture came
+#define DEFAULT_INVERT 0   // out mirrored and short of one edge on a NerdMiner V2 unit
 #define BL_PIN 21
 #define LED_PINS 22, 16, 17   // red, green, blue (common anode, lit when low)
 #define AUDIO_EN_PIN 4

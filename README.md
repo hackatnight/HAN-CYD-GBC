@@ -1,10 +1,10 @@
-# H@N-CYD-GBC
+﻿# H@N-CYD-GBC
 
 **Game Boy, Game Boy Color and NES emulator for the ESP32 "Cheap Yellow Display" (CYD):
 the 2.4" ESP32-2432S024C and ESP32-2432S024R, the 2.8" ESP32-2432S028R, ESP32-2432S028C and two-USB
 "CYD2USB", the 2.8" JC2432W328C, the 3.2" ESP32-2432S032C and ESP32-2432S032R, the 3.5" ESP32-3248S035C and
 ESP32-3248S035R, the touch-less ESP32-2432S024N and ESP32-2432S032N, the ESP32-2432S028R Plus, the LCDWiki 2.8" ESP32-32E (E32R28T), and the Elecrow CrowPanel ESP32 2.4" and
-2.8" (including the 2.4" "ESP32 Solo Miner LCD", SKU DHM04624D)**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an A–Z game list, board LED effects
+2.8" (including the 2.4" "ESP32 Solo Miner LCD", SKU DHM04624D)**, with Bluetooth controllers (PS4, PS5, Xbox, Switch Pro, 8BitDo and more), save states, cheats, menu themes, an Aâ€“Z game list, board LED effects
 and a one-click web flasher.
 
 <p align="center"><img src="docs/images/boot.gif" width="640" alt="The wireframe H@N boot screen"></p>
@@ -27,7 +27,7 @@ and a one-click web flasher.
 - [Flashing in detail](#flashing-in-detail)
 - [Setting up the SD card](#setting-up-the-sd-card)
 - [Sending games over USB](#sending-games-over-usb) and the [demo ROMs](#demo-roms)
-- [Using it](#using-it): game list, A–Z jump, controls, pause menu, save states, cheats, settings, themes, LED
+- [Using it](#using-it): game list, Aâ€“Z jump, controls, pause menu, save states, cheats, settings, themes, LED
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
@@ -44,26 +44,26 @@ and a one-click web flasher.
 
 | Board | Screen and touch | Status |
 |---|---|---|
-| **ESP32-2432S024C** | 2.4" ILI9341 · CST820 capacitive | ✅ **Tested** |
-| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V · XPT2046 resistive (shared bus) · no RGB LED | ✅ **Tested** |
-| **ESP32-2432S024R** | 2.4" ILI9341 · XPT2046 resistive (shared bus) | 🟡 Untested |
-| **ESP32-2432S028R** | 2.8" ILI9341 · XPT2046 resistive · one micro-USB | 🟡 Untested |
-| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) · XPT2046 resistive · two USB ports | 🟡 Untested |
-| **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) · XPT2046 resistive · USB-C | 🟡 Untested |
-| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ILI9341V · XPT2046 resistive · USB-C | 🟡 Untested |
-| **ESP32-2432S028C** | 2.8" ILI9341 · CST820 or GT911 capacitive | 🟡 Untested |
-| **ESP32-2432S032R** | 3.2" ST7789 IPS · XPT2046 resistive (shared bus) | 🟡 Untested |
-| **ESP32-2432S032C** | 3.2" ST7789 IPS · GT911 capacitive | 🟡 Untested |
-| **JC2432W328C** | 2.8" ST7789 IPS · CST820 capacitive (Guition) | 🟡 Untested |
-| **ESP32-3248S035R** | 3.5" ST7796 320×480 · XPT2046 resistive (shared bus) | 🟡 Untested · letterboxed † |
-| **ESP32-3248S035C** | 3.5" ST7796 320×480 · GT911 capacitive | 🟡 Untested · letterboxed † |
-| **ESP32-2432S024N** | 2.4" ILI9341 · **no touch** (controller only) | 🟡 Untested |
-| **ESP32-2432S032N** | 3.2" ST7789 IPS · **no touch** (controller only) | 🟡 Untested |
+| **ESP32-2432S024C** | 2.4" ILI9341 Â· CST820 capacitive | âœ… **Tested** |
+| **Elecrow CrowPanel ESP32 2.4" / 2.8"**<br><sub>incl. the 2.4" Solo Miner, SKU `DHM04624D`</sub> | ILI9341V Â· XPT2046 resistive (shared bus) Â· no RGB LED | âœ… **Tested** |
+| **ESP32-2432S024R** | 2.4" ILI9341 Â· XPT2046 resistive (shared bus) | ðŸŸ¡ Untested |
+| **ESP32-2432S028R** | 2.8" ILI9341 Â· XPT2046 resistive Â· one micro-USB | ðŸŸ¡ Untested |
+| **ESP32-2432S028 "CYD2USB"** | 2.8" ST7789 (usually) Â· XPT2046 resistive Â· two USB ports | ðŸŸ¡ Untested |
+| **ESP32-2432S028R Plus** | 2.8" ST7789 (no inversion) Â· XPT2046 resistive Â· USB-C | ðŸŸ¡ Untested |
+| **E32R28T (LCDWiki 2.8" ESP32-32E)** | 2.8" ST7789 Â· XPT2046 resistive Â· USB-C | ðŸŸ¡ Untested |
+| **ESP32-2432S028C** | 2.8" ILI9341 Â· CST820 or GT911 capacitive | ðŸŸ¡ Untested |
+| **ESP32-2432S032R** | 3.2" ST7789 IPS Â· XPT2046 resistive (shared bus) | ðŸŸ¡ Untested |
+| **ESP32-2432S032C** | 3.2" ST7789 IPS Â· GT911 capacitive | ðŸŸ¡ Untested |
+| **JC2432W328C** | 2.8" ST7789 IPS Â· CST820 capacitive (Guition) | ðŸŸ¡ Untested |
+| **ESP32-3248S035R** | 3.5" ST7796 320Ã—480 Â· XPT2046 resistive (shared bus) | ðŸŸ¡ Untested Â· letterboxed â€  |
+| **ESP32-3248S035C** | 3.5" ST7796 320Ã—480 Â· GT911 capacitive | ðŸŸ¡ Untested Â· letterboxed â€  |
+| **ESP32-2432S024N** | 2.4" ILI9341 Â· **no touch** (controller only) | ðŸŸ¡ Untested |
+| **ESP32-2432S032N** | 3.2" ST7789 IPS Â· **no touch** (controller only) | ðŸŸ¡ Untested |
 
-✅ **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
-board. 🟡 **Untested** - built in and expected to work, but nobody has reported back yet.
+âœ… **Tested** - display, touch, sound, SD card, PS4 and other Bluetooth controllers all confirmed on a real
+board. ðŸŸ¡ **Untested** - built in and expected to work, but nobody has reported back yet.
 
-† The 3.5" boards have a 320×480 screen and currently show the same 240×320 picture centred, with a black
+â€  The 3.5" boards have a 320Ã—480 screen and currently show the same 240Ã—320 picture centred, with a black
 border. A full-screen layout is planned once someone confirms the board works.
 
 - **Two builds per board:** a Bluetooth one, and for the 2.4" C a touch-only one that drops the controller
@@ -135,7 +135,7 @@ The checks run so far:
 - On the 2.8" C, the firmware checks at start whether a GT911 answers, and otherwise uses the CST820. The serial
   log says which. The 3.2" C and 3.5" C do the same (they normally have a GT911).
 - On the 3.2" R and 3.5" R, the touch chip shares the screen's connection, like on the 2.4" R.
-- On the 3.5", the screen is set up as a 240×320 window in the middle of its 320×480 panel, and the rest is
+- On the 3.5", the screen is set up as a 240Ã—320 window in the middle of its 320Ã—480 panel, and the rest is
   cleared to black at start.
 - [`tools/touchtest`](tools/touchtest) runs the firmware's touch calibration against simulated resistive panels, in
   all 8 ways the touch layer can be wired and all 4 screen orientations. Taps land within 1.4 px, and a bad
@@ -146,7 +146,7 @@ What to expect:
 1. **First start:** after the boot animation, it asks you to **tap four crosses** to calibrate the touch screen.
    A resistive screen needs this once; it's saved after that. The 2.8", 3.2" and 3.5" C boards ask too, because
    their touch chip varies (and on the 3.5" the picture doesn't start at the touch layer's corner).
-   *Setup → Display & touch → Calibrate touch* redoes it.
+   *Setup â†’ Display & touch â†’ Calibrate touch* redoes it.
 2. **It starts in portrait** with on-screen buttons, so it can be played by touch right away. If the picture is
    upside down, **hold BOOT for 1 second** on the game list to rotate it. Pair a controller to play in
    landscape.
@@ -161,7 +161,7 @@ The 3.2" boards use an ST7789 IPS screen, so their builds start with ST7789 and 
 
 The two-USB board is the same board with a different screen chip on most units: an ST7789 instead of an ILI9341,
 with colors that come out inverted. Not every unit is the same, so both 2.8" builds have a
-**Setup → Display & touch → Screen chip** switch (ILI9341 / ST7789).
+**Setup â†’ Display & touch â†’ Screen chip** switch (ILI9341 / ST7789).
 - If the colors look wrong, washed out or like a photo negative, flip **Screen chip** and **Invert colors**
   until the picture looks right. Everything else is identical.
 - The CYD2USB build starts with ST7789 and inverted colors; the S028R build starts with ILI9341, no inversion.
@@ -179,7 +179,7 @@ with colors that come out inverted. Not every unit is the same, so both 2.8" bui
 | **Two builds** | Bluetooth (PS4, PS5, Xbox, Switch Pro, 8BitDo... controllers, landscape) or touch-only (on-screen buttons, portrait, more game space) |
 | **Saving** | Battery saves written automatically, plus one save state per game for every system |
 | **Cheats** | GameShark / Pro Action Replay codes from `.cht` files, a built-in cheat finder, and a ready-made pack for 2,572 games |
-| **Game list** | Folders, scrolling long names, A–Z jump (letter strip in landscape, letter grid in portrait) |
+| **Game list** | Folders, scrolling long names, Aâ€“Z jump (letter strip in landscape, letter grid in portrait) |
 | **Shortcuts** | Continue your last game in one tap, plus Favorites, Recent and Most played lists at the top |
 | **Looks** | Code-drawn wireframe boot and loading screens, 4 menu themes, animated menus |
 | **LED** | The board's RGB LED: solid or breathing in any color, blinks on saves and cheats |
@@ -216,7 +216,7 @@ Steps:
 3. **Prepare the SD card:** format it FAT32 and create `Roms/GB`, `Roms/GBC` and `Roms/NES`, then copy your
    games into them. Optional: unzip the [cheat pack](docs/cheats/HAN-CHEATS-GB-GBC-NES.zip) to the root of the card.
 4. **Power on:** insert the card and press RST. After the boot animation you'll see your folders.
-5. **Bluetooth build only:** open *Setup → Controller (Bluetooth) → Pair new controller*. Then put the controller
+5. **Bluetooth build only:** open *Setup â†’ Controller (Bluetooth) â†’ Pair new controller*. Then put the controller
    in pairing mode: **PS4** hold SHARE + PS, **PS5** hold CREATE + PS, **Xbox** hold the pair button on top,
    **Switch Pro** hold the sync button on top. For others, see the controller's manual.
 6. **Tap a game.** The first launch copies it into the board's flash, with a progress bar. After that it starts instantly.
@@ -306,7 +306,7 @@ You don't have to take the SD card out to add games. The board can receive them 
 flash with:
 
 1. Plug the board into a computer and leave it on the game list. You can also open
-   *Setup → Transfer games (USB)*.
+   *Setup â†’ Transfer games (USB)*.
 2. Open **<https://hackatnight.com/HAN-CYD-GBC/#send>** in Chrome or Edge and click **Connect**. Pick the board's
    port. The board switches to its *USB transfer* screen by itself.
 3. Drop games on the page, or click to choose them. You can drop several at once.
@@ -331,7 +331,7 @@ category folder like `Roms/GBC/RPG`.
 - If a game with the same name is already there, the page asks: **Replace it**, **Keep both** (saved as
   "Name (2).gb") or **Skip**.
 
-**Speed:** the USB link runs at 921,600 baud, about **75–85 KB/s**. That's roughly 13 seconds per MB, so a 1 MB
+**Speed:** the USB link runs at 921,600 baud, about **75â€“85 KB/s**. That's roughly 13 seconds per MB, so a 1 MB
 game takes about 13 seconds and a 4 MB game a bit under a minute. For dozens of games at once, putting the card
 in a card reader is still faster.
 
@@ -424,10 +424,10 @@ The top of the main list has shortcuts, so you don't have to dig through thousan
 
 | Row | What it does |
 |---|---|
-| ▶ **Continue: *game*** | Starts the last game you played, in one tap |
-| ★ **Favorites** | The games you've marked, A to Z |
-| 🕒 **Recent** | Your last 15 games, newest first |
-| 📊 **Most played** | Your top 15 by total time played, with the time shown |
+| â–¶ **Continue: *game*** | Starts the last game you played, in one tap |
+| â˜… **Favorites** | The games you've marked, A to Z |
+| ðŸ•’ **Recent** | Your last 15 games, newest first |
+| ðŸ“Š **Most played** | Your top 15 by total time played, with the time shown |
 
 Each row only appears once it has something in it, so after a fresh flash or with a new card the list looks the
 same as before.
@@ -439,7 +439,7 @@ Continue, Recent and Most played then appear. Favorites appears once you mark yo
 
 **Marking a favorite:** either way switches it on and off.
 - **Hold your finger on a game** in any list for half a second. The LED blinks if *Flash on cheat* is on.
-- **In a game:** *pause menu → Favorite*.
+- **In a game:** *pause menu â†’ Favorite*.
 
 Favorites show a small star next to their name everywhere.
 
@@ -451,7 +451,7 @@ Favorites show a small star next to their name everywhere.
 - Games you move or delete simply drop out of the lists.
 - Only the last 300 games you've played are kept (favorites are always kept).
 
-### A–Z jump
+### Aâ€“Z jump
 
 This shows up in any folder that doesn't fit on one screen. Letters with no games are dimmed and skipped.
 
@@ -476,14 +476,14 @@ This shows up in any folder that doesn't fit on one screen. Letters with no game
 | D-pad or left stick | D-pad | Move (hold to repeat) |
 | Right / bottom face button (Game Boy layout) | A / B | OK / Back |
 | Options | START | Opens Setup from the game list |
-| Share | SELECT | A–Z jump in the game list |
+| Share | SELECT | Aâ€“Z jump in the game list |
 | PS button | Pause menu | Close the menu |
 
-- On Xbox and Switch controllers, Options / Share / PS are Menu / View / Xbox (or + / − / Home).
+- On Xbox and Switch controllers, Options / Share / PS are Menu / View / Xbox (or + / âˆ’ / Home).
 - The default **Button layout** is "Game Boy": the right button is A, like on a real Game Boy. Switch it to "Xbox"
-  in *Setup → Controller* if you'd rather have the bottom button as A.
+  in *Setup â†’ Controller* if you'd rather have the bottom button as A.
 - With a controller connected, menus show which buttons do OK and Back, using the marks on that controller:
-  ◯ / ✕ on PlayStation, B / A on Xbox-style pads, A / B on Switch and 8BitDo.
+  â—¯ / âœ• on PlayStation, B / A on Xbox-style pads, A / B on Switch and 8BitDo.
 
 <p align="center"><img src="docs/images/controller-button-hints.png" width="480" alt="Menu button hints for PlayStation, Xbox-style and Nintendo-style controllers"></p>
 
@@ -510,7 +510,7 @@ there later.
 **Cheats.** The emulator re-writes chosen memory addresses with fixed values every frame. That's how GameShark
 and Pro Action Replay codes work.
 - **Codes it reads:**
-  - GB/GBC: GameShark `ttVVLLHH`, where `tt` = `01` normal, `80`–`8F` a save-RAM bank, `90`–`97` a GBC work-RAM bank
+  - GB/GBC: GameShark `ttVVLLHH`, where `tt` = `01` normal, `80`â€“`8F` a save-RAM bank, `90`â€“`97` a GBC work-RAM bank
   - NES: Pro Action Replay `AAAA:VV`, `AAAAVV`, `00AAAAVV`
   - Any system: `AAAA=VV`
   - Up to 4 codes per cheat, joined with `+`
@@ -536,12 +536,12 @@ and Pro Action Replay codes work.
 
 | Setting | What it does |
 |---|---|
-| Game volume | Mute, 1–4 (sound in games) |
+| Game volume | Mute, 1â€“4 (sound in games) |
 | Music | Opens the Music menu: on/off, which tune, and its own volume (see below) |
 | Scaling | 1.5x sharp, 1.5x smooth, 1x, Fit, Stretch. Remembered separately for portrait and landscape; landscape defaults to Stretch. |
 | DMG palette | Colors for original Game Boy games: GB green, Gray, Pocket, Warm, Red |
 | NES palette | Nofrendo, Composite, NES Classic, NTSC, PVM, Smooth |
-| Brightness | Screen backlight 25–100 % |
+| Brightness | Screen backlight 25â€“100 % |
 | Show FPS | Shows "drawn / emulated" frames per second in a corner of the game screen (emulated stays at 60) |
 | Theme | Menu colors (see below) |
 | LED | The board's RGB LED (see below) |
@@ -562,13 +562,13 @@ A high `s` number is why a 4 MB game stutters - the parts that don't fit in flas
   - **flashing a merged `.bin`**, which includes the web flasher
 - Your saves, save states, cheats, favorites and play history live on the SD card, so neither of those touches them.
 
-**Music** (*Setup → Music*):
+**Music** (*Setup â†’ Music*):
 
 | Option | Choices |
 |---|---|
 | Music | On (default) / Off |
 | Tune | **Night Drive** (A minor, 112 BPM, driving) or **Starfield** (E minor, 92 BPM, a calm arpeggio with an echo) |
-| Music volume | 1–4, default 1. Separate from Game volume: changing one never changes the other. |
+| Music volume | 1â€“4, default 1. Separate from Game volume: changing one never changes the other. |
 
 The music plays in the game list and the menus. It fades out before a game starts, because games use the same
 sound output, and comes back when you return to the list.
@@ -588,7 +588,7 @@ sound output, and comes back when you return to the list.
 
 <p align="center"><img src="docs/images/themes.png" width="720" alt="The four menu themes"></p>
 
-*Setup → Theme* cycles through **H@N Night** (the default, taken from the H@N logo), **Neon**, **DMG Green** and
+*Setup â†’ Theme* cycles through **H@N Night** (the default, taken from the H@N logo), **Neon**, **DMG Green** and
 **Amber CRT**. Themes change the menus, the boot screen and the loading screen. Games are never affected.
 
 ### Loading screen
@@ -596,7 +596,7 @@ sound output, and comes back when you return to the list.
 <p align="center"><img src="docs/images/loading.gif" width="480" alt="The wireframe loading screen"></p>
 
 The first time you start a game, it's copied from the SD card into the board's flash. The H@N wireframe rocks
-above the game's name and a progress bar while that happens. A 1–2 MB game takes about 5–20 seconds. The next
+above the game's name and a progress bar while that happens. A 1â€“2 MB game takes about 5â€“20 seconds. The next
 launch of the same game is instant. The logo pauses for a moment about every 64 KB copied, while the chip
 erases flash and nothing can draw.
 
@@ -653,7 +653,7 @@ slow and jittery display thread, and `palstress.c` checks that no color change i
 - A game is copied once into the "game storage" area of the 4 MB flash chip. The chip maps it into memory, so
   the emulator reads the game as if it were in RAM, with nothing copied at play time.
 - The board remembers which game is stored, so the next launch skips the copy.
-- Games bigger than game storage (some GBC games are 4–8 MB) keep their first part in flash. The rest is read
+- Games bigger than game storage (some GBC games are 4â€“8 MB) keep their first part in flash. The rest is read
   from the SD card in 4 KB pieces as needed, which can cause brief pauses.
 
 **Saving without stutter.** Many games use their save memory as scratch space and change it constantly.
@@ -704,8 +704,8 @@ The modified files are in [`src/bt_slim`](src/bt_slim).
 - Save states were tested by saving, playing and loading on a PC. Picture and sound replayed byte-for-byte
   identically on 8 Game Boy test ROMs and 261 NES test ROMs and demos.
 
-**NES mappers.** Supported: 0–5, 7, 9–11, 15, 16, 18, 19, 21–25, 30, 32–34, 40–42, 46, 50, 64–66, 70, 71, 73–76, 78,
-79, 85, 87, 93, 94, 119, 160, 162, 163, 176, 185, 191–195, 206, 228, 229 and 231. That covers the large majority of
+**NES mappers.** Supported: 0â€“5, 7, 9â€“11, 15, 16, 18, 19, 21â€“25, 30, 32â€“34, 40â€“42, 46, 50, 64â€“66, 70, 71, 73â€“76, 78,
+79, 85, 87, 93, 94, 119, 160, 162, 163, 176, 185, 191â€“195, 206, 228, 229 and 231. That covers the large majority of
 licensed games.
 - Famicom Disk System and NSF music files aren't supported.
 - Bootleg carts (mappers 91, 187...) show "Probably a bootleg cart".
@@ -718,18 +718,18 @@ licensed games.
 | Problem | Try this |
 |---|---|
 | Blank or white screen after flashing | Make sure you flashed the build for your exact board (model number on the back): ESP32-2432S024C / 024R (2.4"), ESP32-2432S028R / 028C, CYD2USB (2.8", two USB ports), ESP32-2432S032R / C (3.2") or ESP32-3248S035R / C (3.5"). Other CYD boards aren't supported. |
-| 2.8" or 3.2" board: colors inverted or washed out | *Setup → Display & touch → Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
-| 3.5" board: colors swapped or picture mirrored | *Setup → Display & touch → Swap red/blue* or *Mirror fix*. |
-| Taps land in the wrong place (any board but the 2.4" C) | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
+| 2.8" or 3.2" board: colors inverted or washed out | *Setup â†’ Display & touch â†’ Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
+| 3.5" board: colors swapped or picture mirrored | *Setup â†’ Display & touch â†’ Swap red/blue* or *Mirror fix*. |
+| Taps land in the wrong place (any board but the 2.4" C) | *Setup â†’ Display & touch â†’ Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |
 | The screen is unreadable, or taps land nowhere | Use **Board tools** under the serial monitor on the [flasher page](https://hackatnight.com/HAN-CYD-GBC/): *Clear touch calibration* or *Clear all settings* over the USB cable, without needing to read the screen. *Board info* prints the board, chip and pin map for a bug report. |
 | "No SD card found" | Format FAT32, reseat the card, tap the screen to retry. |
 | "Restarted: power dip (brownout)" | The speaker drew more than the USB supply could give. Use a short good cable or a 5 V 1 A+ adapter, or lower the volume. |
-| Touch is off | *Setup → Display & touch → Calibrate touch*. |
-| No on-screen buttons in landscape | *Setup → Controller → Landscape pad*: **Outlines** draws a d-pad, A/B and MENU/SEL/START over the game, **Touch zones** makes the same areas respond without drawing anything, **Off** is the old behavior. Portrait uses the panel below the game as before. |
+| Touch is off | *Setup â†’ Display & touch â†’ Calibrate touch*. |
+| No on-screen buttons in landscape | *Setup â†’ Controller â†’ Landscape pad*: **Outlines** draws a d-pad, A/B and MENU/SEL/START over the game, **Touch zones** makes the same areas respond without drawing anything, **Off** is the old behavior. Portrait uses the panel below the game as before. |
 | Touch does nothing at all on an Elecrow 2.4" board | If it's the **ESP32 Solo Miner LCD** (SKU `DHM04624D`), its touch chip answers on GPIO4, not GPIO12 like every other board of this family - fixed in 2.20.0, so flash that or later. Background: [the touchscreen reads GPIO4, not GPIO12](docs/elecrow-esp32-solo-miner-2.4-touch.md). |
 | Controller won't pair | Bluetooth build only. Open *Pair new controller* first, then put the controller in pairing mode (PS4: SHARE + PS; PS5: CREATE + PS; Xbox: pair button; Switch Pro: sync button). If it paired with another device before, *Forget all controllers* and try again. Xbox controllers may need a firmware update (Xbox Accessories app) for Bluetooth. |
-| A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup → Controller* and restart. |
+| A big GBC game says "Not enough memory" | Use the touch-only build, or turn Bluetooth off in *Setup â†’ Controller* and restart. |
 | No cheats for a game | The `.cht` file name must match the game's name (case, punctuation and `( )` / `[ ]` tags are ignored). Rename the file if needed. |
 | NES game says "Mapper N isn't supported" | That cartridge chip isn't emulated (see the list above). Bootleg carts like the NES Street Fighter ports aren't supported. |
 
@@ -785,7 +785,7 @@ Project layout:
 - **LovyanGFX** (display driver): FreeBSD license.
 - **Cheat pack**: adapted from libretro-database, CC BY-SA 4.0. See `LICENSE-CHEATS.txt` inside the zip.
 - **ESP Web Tools** (web flasher): Apache 2.0, loaded from unpkg.
-- Everything else © H@N ([hackatnight.com](https://hackatnight.com)). Because the emulator cores are GPL v2, the
+- Everything else Â© H@N ([hackatnight.com](https://hackatnight.com)). Because the emulator cores are GPL v2, the
   firmware as a whole is distributed under the **GNU GPL v2** (see [LICENSE](LICENSE)).
 
 No games are included. Use only game files you have the right to use.
