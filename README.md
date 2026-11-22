@@ -97,6 +97,9 @@ pin (21 on the 2.8" CYDs, 27 on the others), the touch chip and the screen chip.
   Use its own build. Wired like the 2.8" R (ILI9341, XPT2046 touch on its own pins, SD on 18/19/23/5), except the RGB
   LED is on GPIO 22 / 16 / 17 (red / green / blue) and GPIO4 enables the speaker amplifier when low. The CN3 header
   (IO23/19/18, CS IO27) shares the SD card's bus.
+  **Speaker:** CN1 often ships as two bare pads with no connector (the footprint is a 1.25 mm 2-pin JST/MX1.25).
+  Solder an 8 Ω speaker (0.5-2 W) straight to the pads. Either way round works: the amplifier (U3) drives both pads,
+  so neither is ground. Don't join either pad to GND.
 - **Elecrow CrowPanel ESP32 HMI 2.4" and 2.8":** one build for both (the original ESP32-WROOM versions, *not* the
   "Advance" ESP32-S3 ones). They're wired like the 2.4" R (ILI9341, resistive touch on the screen's bus, backlight 27,
   same SD card and speaker pins), with two differences: there's no RGB LED, so the LED settings are left out (its
