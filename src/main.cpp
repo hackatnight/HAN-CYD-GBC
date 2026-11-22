@@ -175,6 +175,13 @@
 #define LED_PINS 22, 16, 17   // red, green, blue (common anode, lit when low)
 #define AUDIO_EN_PIN 4
 #define AUDIO_EN_LEVEL LOW // this board's amplifier is enabled by a low level
+// Measured on a ZLX unit: the XPT2046 answers on 25/32/39 (CS33) with clean readings when
+// clocked slowly (Z1 ~530 pressed), but LovyanGFX's full-speed bit-bang got nothing back.
+// So touch is read by xptSlowRead() and polled.
+#define TP_INT_PIN -1
+#define XPT_SLOW_BITBANG 1
+#define XPT_Z_MIN 150
+#define PANEL_ROT_OFFSET 2 // the panel is mounted the other way up: USB at the bottom in portrait
 #elif defined(BOARD_CROW)
 #define BOARD_NAME "CrowPanel-ESP32-2.4-2.8"
 #define TOUCH_KIND TOUCH_XPT_BUS
@@ -267,7 +274,11 @@
 #define PIN_TP_MOSI  32
 #define PIN_TP_MISO  39
 #define PIN_TP_CS    33
+#ifdef TP_INT_PIN
+#define PIN_TP_INT   TP_INT_PIN
+#else
 #define PIN_TP_INT   36
+#endif
 #elif TOUCH_KIND == TOUCH_XPT_BUS
 #define PIN_TP_CS    33   // on the screen's bus (14 / 13 / 12)
 // How fast to clock the touch chip. 2.5 MHz is the usual figure for an XPT2046 and is
@@ -377,7 +388,11 @@ public:
       c.panel_height = 320;
       c.offset_x = 0;
       c.offset_y = 0;
+#ifdef PANEL_ROT_OFFSET
+      c.offset_rotation = PANEL_ROT_OFFSET;
+#else
       c.offset_rotation = 0;
+#endif
       c.readable = false;
       c.invert = false;
       c.rgb_order = false;
@@ -966,7 +981,50 @@ static inline void busDmaIdle(void) {
 #endif
 }
 
+#ifdef XPT_SLOW_BITBANG
+// LovyanGFX's software SPI for the XPT2046 ignores cfg.freq and clocks at full GPIO speed,
+// faster than some chips can answer: every sample then falls outside its window and is
+// dropped. This reads the chip with ~250 kHz clocks instead, the way a probe on the
+// E32R28T got clean readings.
+static uint16_t xptSlow(uint8_t cmd) {
+  digitalWrite(PIN_TP_CS, LOW);
+  for (int i = 7; i >= 0; i--) {
+    digitalWrite(PIN_TP_MOSI, (cmd >> i) & 1); delayMicroseconds(2);
+    digitalWrite(PIN_TP_SCLK, HIGH); delayMicroseconds(2); digitalWrite(PIN_TP_SCLK, LOW);
+  }
+  delayMicroseconds(10);
+  uint16_t v = 0;
+  for (int i = 0; i < 16; i++) {
+    digitalWrite(PIN_TP_SCLK, HIGH); delayMicroseconds(2);
+    v = (v << 1) | digitalRead(PIN_TP_MISO);
+    digitalWrite(PIN_TP_SCLK, LOW); delayMicroseconds(2);
+  }
+  digitalWrite(PIN_TP_CS, HIGH);
+  return v >> 4;
+}
+static bool xptSlowRead(int &rx, int &ry) {
+  static bool pinsSet = false;
+  if (!pinsSet) {
+    pinMode(PIN_TP_SCLK, OUTPUT); pinMode(PIN_TP_MOSI, OUTPUT); pinMode(PIN_TP_MISO, INPUT);
+    pinMode(PIN_TP_CS, OUTPUT); digitalWrite(PIN_TP_CS, HIGH); digitalWrite(PIN_TP_SCLK, LOW);
+    pinsSet = true;
+  }
+  if (xptSlow(0xB1) < XPT_Z_MIN) { xptSlow(0x80); return false; }   // Z1: not pressed
+  int xs[5], ys[5];
+  for (int i = 0; i < 5; i++) { xs[i] = xptSlow(0xD1); ys[i] = xptSlow(0x91); }
+  bool still = xptSlow(0xB1) >= XPT_Z_MIN;   // still pressed after sampling: not a lift
+  xptSlow(0x80);
+  if (!still) return false;
+  std::sort(xs, xs + 5); std::sort(ys, ys + 5);
+  rx = xs[2]; ry = ys[2];
+  return rx > 100 && rx < 4000 && ry > 100 && ry < 4000;
+}
+#endif
+
 static bool readTouchRaw(int &rx, int &ry) {
+#ifdef XPT_SLOW_BITBANG
+  return xptSlowRead(rx, ry);
+#endif
 #if TOUCH_KIND == TOUCH_NONE
   (void)rx; (void)ry;
   return false;
