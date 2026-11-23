@@ -100,6 +100,8 @@ pin (21 on the 2.8" CYDs, 27 on the others), the touch chip and the screen chip.
   **Speaker:** CN1 often ships as two bare pads with no connector (the footprint is a 1.25 mm 2-pin JST/MX1.25).
   Tested wiring: speaker **red (+) to either of the two small inner pads**, **black (-) to one of the two large outer
   pads** (the connector's mounting pads, which are ground). A speaker across the two inner pads stays silent.
+  ⚠️ **Not fully confirmed:** this worked on one board, then that board's speaker output stopped working with any
+  speaker. The wiring may be wrong, or it may have damaged the amplifier. Only one board has been tested.
 - **Elecrow CrowPanel ESP32 HMI 2.4" and 2.8":** one build for both (the original ESP32-WROOM versions, *not* the
   "Advance" ESP32-S3 ones). They're wired like the 2.4" R (ILI9341, resistive touch on the screen's bus, backlight 27,
   same SD card and speaker pins), with two differences: there's no RGB LED, so the LED settings are left out (its
