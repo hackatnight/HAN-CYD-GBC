@@ -724,6 +724,7 @@ licensed games.
 |---|---|
 | Blank or white screen after flashing | Make sure you flashed the build for your exact board (model number on the back): ESP32-2432S024C / 024R (2.4"), ESP32-2432S028R / 028C, CYD2USB (2.8", two USB ports), ESP32-2432S032R / C (3.2") or ESP32-3248S035R / C (3.5"). Other CYD boards aren't supported. |
 | 2.8" or 3.2" board: colors inverted or washed out | *Setup → Display & touch → Screen chip* (ILI9341 / ST7789) and *Invert colors*. |
+| Landscape Stretch / Fit runs slow (FPS under 60/60) | *Display → Screen speed* → 80 MHz (also in the in-game menu). Faster, but on some screens the on-screen controls flicker; set it back to 40 MHz if they do. |
 | 3.5" board: colors swapped or picture mirrored | *Setup → Display & touch → Swap red/blue* or *Mirror fix*. |
 | Taps land in the wrong place (any board but the 2.4" C) | *Setup → Display & touch → Calibrate touch*, then tap each cross precisely (a stylus or fingernail helps on resistive screens). |
 | Web flasher can't find the board | Use a data cable, install the CH340 driver, or hold BOOT, tap RST, release BOOT, then click Install. |

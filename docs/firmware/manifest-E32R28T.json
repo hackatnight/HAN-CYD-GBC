@@ -1,6 +1,6 @@
 {
   "name": "H@N-CYD-GBC for the E32R28T (LCDWiki 2.8\" ESP32-32E, USB-C)",
-  "version": "2.31.2",
+  "version": "2.32.0",
   "new_install_prompt_erase": true,
   "builds": [
     {

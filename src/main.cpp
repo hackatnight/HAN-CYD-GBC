@@ -314,7 +314,7 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.31.2"
+#define APP_VERSION "2.32.0"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
@@ -349,6 +349,8 @@ public:
 #endif
   lgfx::Bus_SPI bus;
   lgfx::Light_PWM light;
+  // "Screen speed" setting: the ESP32 can clock the bus at 80 MHz / n only, so 40 or 80
+  void setBusHz(uint32_t hz) { auto c = bus.config(); c.freq_write = hz; bus.config(c); }
 #if TOUCH_RESISTIVE
   lgfx::Touch_XPT2046 touch;
 #elif TOUCH_KIND != TOUCH_NONE
@@ -363,7 +365,7 @@ public:
       auto c = bus.config();
       c.spi_host = HSPI_HOST;
       c.spi_mode = 0;
-      c.freq_write = 40000000;
+      c.freq_write = 40000000;   // the "Screen speed" setting can raise it to 80 MHz
       c.freq_read = 16000000;
       c.spi_3wire = false;
       c.use_lock = true;
@@ -556,6 +558,7 @@ struct Settings {
   uint8_t padLand = 2;     // landscape pad: 0 = off, 1 = touch zones only, 2 = drawn outlines
   uint8_t mirrorFix = 0;   // drop the X mirror if the image is mirrored
   uint8_t invert = DEFAULT_INVERT;
+  uint8_t lcdFast = 0;     // screen bus: 0 = 40 MHz, 1 = 80 MHz (faster landscape, may glitch)
   uint8_t panelType = DEFAULT_PANEL;   // screen chip on 2.8" / 3.2" boards: 0 = ILI9341, 1 = ST7789
   uint8_t swapRB = 0;
   uint8_t touchFlipX = 0;
@@ -605,6 +608,7 @@ static void loadSettings() {
   cfg.mirrorFix = prefs.getUChar("mirr", cfg.mirrorFix);
   cfg.invert = prefs.getUChar("inv", cfg.invert);
   cfg.panelType = prefs.getUChar("pnl", cfg.panelType) & 1;
+  cfg.lcdFast = prefs.getUChar("spd", cfg.lcdFast) & 1;
   cfg.swapRB = prefs.getUChar("rgb", cfg.swapRB);
   cfg.touchFlipX = prefs.getUChar("tfx", cfg.touchFlipX);
   cfg.touchFlipY = prefs.getUChar("tfy", cfg.touchFlipY);
@@ -650,6 +654,7 @@ static void saveSettings() {
   prefs.putUChar("mirr", cfg.mirrorFix);
   prefs.putUChar("inv", cfg.invert);
   prefs.putUChar("pnl", cfg.panelType);
+  prefs.putUChar("spd", cfg.lcdFast);
   prefs.putUChar("rgb", cfg.swapRB);
   prefs.putUChar("tfx", cfg.touchFlipX);
   prefs.putUChar("tfy", cfg.touchFlipY);
@@ -685,6 +690,7 @@ static uint8_t &curScale() { return (cfg.rotation & 1) ? cfg.scaleLand : cfg.sca
 static void applyBacklight(uint8_t v);   // defined below
 
 static void applyDisplaySettings(bool reinit) {
+  lcd.setBusHz(cfg.lcdFast ? 80000000 : 40000000);   // takes effect on the next transfer
   if (reinit) {
     lcd.selectPanel(cfg.panelType);
     lcd.setRgbOrder(cfg.swapRB);
@@ -3940,13 +3946,13 @@ static void calibrateTouch() {
   touchTest();  // let the user check the result straight away
 }
 
-static void displayTouchMenu() {
-  enum { DT_ORIENT, DT_CAL, DT_CALCLR, DT_TEST, DT_FLIP, DT_MIRROR, DT_INVERT, DT_SWAP, DT_CHIP };
+static void displayTouchMenu(bool inGame = false) {
+  enum { DT_ORIENT, DT_CAL, DT_CALCLR, DT_TEST, DT_FLIP, DT_MIRROR, DT_INVERT, DT_SWAP, DT_CHIP, DT_SPEED };
   while (true) {
     std::vector<MenuItem> it;
     std::vector<int> id;
     auto add = [&](int k, const char *label, String value) { it.push_back({ label, value }); id.push_back(k); };
-    add(DT_ORIENT, "Orientation", orientName());
+    if (!inGame) add(DT_ORIENT, "Orientation", orientName());   // not mid-game: the layout is set at start
 #if TOUCH_KIND != TOUCH_NONE
     add(DT_CAL, "Calibrate touch", cfg.calValid ? "calibrated" : "default");
     add(DT_CALCLR, "Clear calibration", "");
@@ -3959,6 +3965,7 @@ static void displayTouchMenu() {
 #if PANEL_CHOICE
     add(DT_CHIP, "Screen chip", cfg.panelType ? "ST7789" : "ILI9341");   // if the colors or picture look wrong
 #endif
+    add(DT_SPEED, "Screen speed", cfg.lcdFast ? "80 MHz" : "40 MHz");
     static int selDT = -1;
     int i = runList(TOUCH_KIND == TOUCH_NONE ? "Display" : "Display & touch", "Back", it, &selDT);
     if (i < 0) { saveSettings(); return; }
@@ -3976,6 +3983,7 @@ static void displayTouchMenu() {
       case DT_INVERT: cfg.invert ^= 1; break;
       case DT_SWAP: cfg.swapRB ^= 1; reinit = true; break;
       case DT_CHIP: cfg.panelType ^= 1; reinit = true; break;
+      case DT_SPEED: cfg.lcdFast ^= 1; break;
     }
     applyDisplaySettings(reinit);
     saveSettings();
@@ -5073,18 +5081,20 @@ static PauseResult pauseMenu() {
       { "Scaling", scaleName() },
       { "DMG palette", gb_is_cgb() ? "GBC game" : DMG_PALETTE_NAMES[cfg.dmgPalette % NUM_DMG_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
+      { "Display", ">" },
       { "LED", ">" },
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
 #if !HAS_LED
-    it.erase(it.begin() + 10);   // "LED"
+    it.erase(it.begin() + 11);   // "LED"
 #endif
     static int selPause = -1;
     int i = runList(gb_rom_title(), nullptr, it, &selPause);
 #if !HAS_LED
-    if (i >= 10) i++;
+    if (i >= 11) i++;
 #endif
+    if (i == 10) i = 100; else if (i > 10) i--;   // "Display" sits after Show FPS
     switch (i) {
       case -1:
       case -3:
@@ -5129,6 +5139,7 @@ static PauseResult pauseMenu() {
         break;
       case 9: cfg.showFps ^= 1; saveSettings(); break;
       case 10: ledMenu(); break;
+      case 100: displayTouchMenu(true); break;
       case 11: return P_RESET;
       case 12: return P_QUIT;
     }
@@ -5486,18 +5497,20 @@ static PauseResult nesPauseMenu(const char *title) {
       { "Scaling", scaleName() },
       { "NES palette", NES_PALETTE_NAMES[cfg.nesPalette % NES_NUM_PALETTES] },
       { "Show FPS", cfg.showFps ? "On" : "Off" },
+      { "Display", ">" },
       { "LED", ">" },
       { "Reset game", "" },
       { "Save & quit to list", "" },
     };
 #if !HAS_LED
-    it.erase(it.begin() + 10);   // "LED"
+    it.erase(it.begin() + 11);   // "LED"
 #endif
     static int selPause = -1;
     int i = runList(title, nullptr, it, &selPause);
 #if !HAS_LED
-    if (i >= 10) i++;
+    if (i >= 11) i++;
 #endif
+    if (i == 10) i = 100; else if (i > 10) i--;   // "Display" sits after Show FPS
     switch (i) {
       case -1:
       case -3:
@@ -5540,6 +5553,7 @@ static PauseResult nesPauseMenu(const char *title) {
         break;
       case 9: cfg.showFps ^= 1; saveSettings(); break;
       case 10: ledMenu(); break;
+      case 100: displayTouchMenu(true); break;
       case 11: return P_RESET;
       case 12: return P_QUIT;
     }
