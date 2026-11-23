@@ -314,13 +314,12 @@
 #define PIN_BOOT_BTN  0
 // Speaker: GPIO26 = internal DAC channel 2 (driven through I2S0 built-in DAC)
 
-#define APP_VERSION "2.31.1"
+#define APP_VERSION "2.31.2"
 #define XFER_BAUD 921600   // USB serial: boot log and game transfers
 #define APP_NAME "H@N-CYD-GBC"
 #define AUDIO_RATE  22050
-// Game volume steps, 0 = mute. Four was too coarse to find a comfortable level on a
-// small speaker: the gap between 1 and 2 was most of the usable range.
-#define VOL_MAX 10
+// Game volume steps, 0 = mute. 2.24.0 tried ten steps; back to four, which works.
+#define VOL_MAX 4
 // Sound waiting to be played, in 128-sample buffers (8 = 46 ms). Raising this hides
 // stutters, but the RAM comes out of the pages a big ROM keeps on hand while streaming
 // from the SD card, and 4 MB games slowed badly for it. Fix the stalls instead.
@@ -590,7 +589,9 @@ static Preferences prefs;
 static void loadSettings() {
   prefs.begin("gbc", true);
   cfg.volume = prefs.getUChar("vol", cfg.volume);
-  if (cfg.volume && cfg.volume <= 4 && !prefs.getUChar("vol10", 0)) cfg.volume = cfg.volume * VOL_MAX / 4;
+  // a value saved on the old 0..10 scale: bring it back to 0..4
+  if (cfg.volume && prefs.getUChar("vol10", 0) && !prefs.getUChar("vol4", 0))
+    cfg.volume = max(1, (cfg.volume * 4 + 5) / 10);
   if (cfg.volume > VOL_MAX) cfg.volume = VOL_MAX;
   cfg.scale = prefs.getUChar("scale", cfg.scale);
   cfg.scaleLand = prefs.getUChar("scaleL", cfg.scaleLand);
@@ -639,7 +640,7 @@ static void loadSettings() {
 static void saveSettings() {
   prefs.begin("gbc", false);
   prefs.putUChar("vol", cfg.volume);
-  prefs.putUChar("vol10", 1);   // this value is on the 0..VOL_MAX scale
+  prefs.putUChar("vol4", 1);    // this value is on the 0..4 scale
   prefs.putUChar("scale", cfg.scale);
   prefs.putUChar("scaleL", cfg.scaleLand);
   prefs.putUChar("fps", cfg.showFps);
